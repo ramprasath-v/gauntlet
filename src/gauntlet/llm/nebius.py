@@ -20,6 +20,12 @@ ALLOWED_NEBIUS_HOSTS = {
 NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_HOST = "api.tokenfactory.us-central1.nebius.com"
 REPAIR_SCHEMA_NAME = "repair_proposal"
+NEMOTRON_REASONING_ENABLED = "/think"
+NEMOTRON_REASONING_DISABLED = "/no_think"
+NEMOTRON_REASONING_DIRECTIVES = frozenset({
+    NEMOTRON_REASONING_ENABLED,
+    NEMOTRON_REASONING_DISABLED,
+})
 MAX_ERROR_BODY_CHARS = 4_000
 logger = logging.getLogger(__name__)
 
@@ -219,6 +225,21 @@ def _sanitize_error_body(response: httpx.Response, api_key: str) -> str:
     return sanitized or "<empty response body>"
 
 
+def _with_nemotron_reasoning_directive(
+    messages: Sequence[Mapping[str, str]], directive: str,
+) -> list[dict[str, str]]:
+    if directive not in NEMOTRON_REASONING_DIRECTIVES:
+        raise ValueError(
+            "Nemotron reasoning directive must be /think or /no_think"
+        )
+    serialized = [dict(message) for message in messages]
+    if serialized and serialized[0].get("role") == "system":
+        serialized[0]["content"] = directive + "\n" + serialized[0]["content"]
+    else:
+        serialized.insert(0, {"role": "system", "content": directive})
+    return serialized
+
+
 class NebiusTokenFactoryClient:
     def __init__(
         self, config: NebiusConfig | None = None, *,
@@ -242,11 +263,29 @@ class NebiusTokenFactoryClient:
     async def complete(
         self, messages: Sequence[Mapping[str, str]], *,
         response_schema: dict[str, Any] | None = None,
+        reasoning_directive: str | None = None,
+        max_tokens: int | None = None,
     ) -> str:
+        serialized_messages = [dict(message) for message in messages]
+        if reasoning_directive is not None:
+            if self.config.model != NEMOTRON_SUPER_MODEL:
+                raise ValueError(
+                    "Nemotron reasoning directives require the Nemotron-3-Super model"
+                )
+            serialized_messages = _with_nemotron_reasoning_directive(
+                serialized_messages, reasoning_directive
+            )
+        if max_tokens is not None and (
+            isinstance(max_tokens, bool) or not isinstance(max_tokens, int)
+            or max_tokens <= 0
+        ):
+            raise ValueError("max_tokens must be a positive integer")
         payload: dict[str, Any] = {
             "model": self.config.model,
-            "messages": list(messages),
+            "messages": serialized_messages,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if response_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",

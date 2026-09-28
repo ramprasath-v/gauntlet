@@ -481,3 +481,96 @@ logs. Full suite: 93 passed, 0 failed.
 Attempt #5 is justified because the next single response will provide enough
 sanitized evidence to classify an absent-content outcome, but no live request
 was made in this task.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Fifth Single Live-Provider Smoke Validation
+
+Result: `LIVE_PROVIDER_FAILED`; M3.1 live quality gate: FAIL.
+
+Request facts:
+- endpoint: `https://api.tokenfactory.us-central1.nebius.com/v1/chat/completions`
+- configured model: `nvidia/nemotron-3-super-120b-a12b`
+- request count: exactly 1; no retry
+- end-to-end latency: 39.79 seconds
+- repository source digest unchanged: PASS
+
+Sanitized completion metadata:
+- HTTP status: 200
+- response ID: `chatcmpl-8e7f939327d5c545`
+- object type: `chat.completion`
+- returned model: `nvidia/nemotron-3-super-120b-a12b`
+- choice count: 1
+- selected choice index: 0
+- finish reason: `length`
+- message role: `assistant`
+- message field names/types: `annotations:null`, `audio:null`, `content:null`, `function_call:null`, `reasoning:str`, `reasoning_content:str`, `refusal:null`, `role:str`, `tool_calls:null`
+- content type: `null`; content length: unavailable
+- refusal field present with type `null`; this is not evidence of a refusal
+- reasoning and reasoning_content fields present with type `str`; their contents were not logged or used
+- tool_calls field present with type `null`; tool-call count unavailable
+- prompt tokens: 1,641
+- completion tokens: 8,192
+- total tokens: 9,833
+
+Failure classification: `LENGTH_TERMINATED_WITHOUT_CONTENT`. The HTTP request
+succeeded and the envelope was valid, but generation ended with
+`finish_reason=length` at 8,192 completion tokens while `message.content` was
+null. This metadata establishes token-length termination; it does not establish
+anything about the undisclosed reasoning text.
+
+Strict `RepairProposal` parsing was not reached because there was no text in the
+accepted content channel. No proposal, patch, regression test, or policy
+artifact was produced for review. No fallback field was used, no patch was
+applied, and M4.1/M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Offline Nemotron-3-Super Reasoning Control
+
+Live request made during this work: No.
+
+Attempt #5 facts are unchanged: Nebius returned HTTP 200 after 39.79 seconds;
+the response reported 1,641 prompt tokens, 8,192 completion tokens, 9,833 total
+tokens, `finish_reason=length`, string-valued `reasoning` and
+`reasoning_content` fields, and `content=null`. No reasoning text was logged or
+used. The completion reached its 8,192-token completion limit before producing
+the final structured response. The response metadata establishes exhaustion of
+the completion budget; it does not establish what the hidden reasoning said.
+
+The current official NVIDIA reasoning guide identifies a model-specific
+control for `nvidia/nemotron-3-super-120b-a12b`: put `/think` or `/no_think` at
+the beginning of the system prompt. It separately documents request-level
+thinking-token fields for Nano variants, not for this Super model. Gauntlet
+therefore selects `/no_think`, preserving the existing remediation system
+instructions after that directive. It does not send `reasoning_effort`,
+`max_thinking_tokens`, chat-template kwargs, or undocumented `extra_body`
+fields.
+
+Sources reviewed:
+- [Nebius Nemotron-3-Super model cookbook](https://github.com/nebius/token-factory-cookbook/blob/main/models/nemotron/nemotron3-super-120B.md)
+- [NVIDIA: Enable Reasoning for Nemotron 3 Super](https://docs.nvidia.com/rag/latest/enable-nemotron-thinking.html#enable-reasoning-for-nemotron-3-super)
+- [Nebius inference generation parameters](https://docs.tokenfactory.nebius.com/ai-models-inference/overview#generation-parameters)
+- [vLLM ChatCompletionRequest parameter reference](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/openai/chat_completion/protocol/)
+
+The next request is now serialized with the first system message beginning
+`/no_think` and with `max_tokens=4096`. Nebius documents that its API supports
+the full vLLM parameter set, and vLLM documents `max_tokens` as a supported
+chat-completion output limit. A 4,096-token ceiling bounds cost and latency while
+leaving ample space for this small single-file diff, concise rationale,
+regression test, and provenance fields once extended reasoning is disabled.
+The strict named `repair_proposal` JSON-schema envelope and complete
+`RepairProposal` schema are unchanged.
+
+Offline tests verify exact request serialization, preservation of the existing
+system prompt, the 4,096-token output ceiling, byte-for-structure equality of
+the complete schema, rejection of undocumented reasoning directives before any
+request, and the existing rule that `message.content` is the sole proposal
+channel. Sanitized completion metadata remains unchanged and continues to
+report reasoning presence/type without recording reasoning text.
+
+Attempt #6 is justified as one controlled live smoke request after the complete
+offline suite passes. No attempt #6 was made here, no repair was applied, and
+M4.1/M5 were not started.

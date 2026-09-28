@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
+    NEMOTRON_REASONING_DISABLED,
     NebiusAPIError, NebiusCompletionError, NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.context import build_source_context
@@ -15,6 +16,7 @@ from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import RemediationRequest, RepairProposal
 from gauntlet.remediation.parsing import RepairProposalJSONError, parse_repair_proposal
 from gauntlet.remediation.prompt import SYSTEM_PROMPT, build_messages
+from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
 from gauntlet.remediation.workflow import generate_repair_proposal
 from victims.customer_support.app import create_app
 
@@ -154,15 +156,22 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
     )
     client = NebiusTokenFactoryClient(config, transport=httpx.MockTransport(handler))
     content = await client.complete(
-        [{"role": "user", "content": "test"}],
+        [{"role": "system", "content": "existing repair contract"},
+         {"role": "user", "content": "test"}],
         response_schema=schema,
+        reasoning_directive=NEMOTRON_REASONING_DISABLED,
+        max_tokens=4_096,
     )
     assert content == '{"ok": true}'
     assert observed["url"].endswith("/v1/chat/completions")
     assert observed["authorization"] == "Bearer synthetic-test-key"
     assert observed["body"] == {
         "model": "nvidia/nemotron-3-super-120b-a12b",
-        "messages": [{"role": "user", "content": "test"}],
+        "messages": [
+            {"role": "system", "content": "/no_think\nexisting repair contract"},
+            {"role": "user", "content": "test"},
+        ],
+        "max_tokens": 4_096,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -171,6 +180,66 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
             },
         },
     }
+
+
+async def test_remediation_provider_serializes_no_think_and_bounded_output_without_schema_change():
+    observed = {}
+    schema = RepairProposal.model_json_schema()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.update(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"ok": true}'}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+    provider = NebiusNemotronRemediationProvider(client)
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    request = RemediationRequest(
+        source_context=context,
+        failure_type="indirect_prompt_injection",
+        provider=provider.provider_name,
+        model=provider.model_name,
+        evidence_summary={"verdict": trace.verdict},
+    )
+
+    await provider.generate(request)
+
+    assert observed["messages"][0] == {
+        "role": "system", "content": "/no_think\n" + SYSTEM_PROMPT,
+    }
+    assert observed["max_tokens"] == 4_096
+    assert observed["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "repair_proposal", "schema": schema},
+    }
+
+
+@pytest.mark.parametrize("directive", ["off", "none", "detailed thinking off", ""])
+async def test_nebius_rejects_undocumented_reasoning_directives(directive):
+    request_made = False
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal request_made
+        request_made = True
+        return httpx.Response(200, json={})
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+    with pytest.raises(ValueError, match="must be /think or /no_think"):
+        await client.complete(
+            [{"role": "user", "content": "test"}],
+            reasoning_directive=directive,
+        )
+    assert request_made is False
 
 
 async def test_nebius_serializer_wraps_schema_rejected_by_previous_live_attempt():
