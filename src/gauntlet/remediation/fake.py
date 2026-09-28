@@ -1,5 +1,5 @@
 """Deterministic provider substitute for offline contract tests."""
-from gauntlet.remediation.models import GeneratedRepair, RemediationRequest
+from gauntlet.remediation.models import GeneratedRepairCandidate, RemediationRequest
 
 
 class FakeRemediationProvider:
@@ -8,7 +8,7 @@ class FakeRemediationProvider:
 
     async def generate(self, request: RemediationRequest) -> str:
         context = request.source_context
-        proposal = GeneratedRepair(
+        proposal = GeneratedRepairCandidate(
             rationale="Enforce the recorded UNTRUSTED tool-data boundary while retaining review prose.",
             patch=(
                 f"--- a/{context.repository_relative_path}\n"

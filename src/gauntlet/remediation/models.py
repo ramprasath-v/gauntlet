@@ -1,9 +1,10 @@
 import ast
 import json
 import re
+from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any
-from uuid import UUID
+from typing import Any, Literal
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -81,11 +82,92 @@ class RepairContext(StrictModel):
     failure_type: str = Field(min_length=1)
 
 
-class GeneratedRepair(StrictModel):
+class GeneratedRepairCandidate(StrictModel):
+    """Decoded provider content; no patch or Python semantics are implied."""
+
+    rationale: str = Field(max_length=8_000)
+    patch: str = Field(max_length=50_000)
+    regression_test: str = Field(max_length=50_000)
+    optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
+
+
+FailureStage = Literal[
+    "candidate_validation",
+    "source_identity",
+    "regression_syntax",
+    "regression_structure",
+    "patch_format",
+    "patch_authorization",
+    "patch_apply",
+    "compile",
+    "regression_execution",
+    "security_test",
+    "utility_test",
+    "existing_suite",
+]
+
+
+class RepairFailure(StrictModel):
+    failure_id: str = Field(default_factory=lambda: str(uuid4()))
+    repair_id: str | None = None
+    candidate_id: str = Field(default_factory=lambda: str(uuid4()))
+    candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_field_digests: dict[str, str]
+    candidate_field_lengths: dict[str, int]
+    trace_id: str
+    boundary_id: str
+    evidence_ids: list[str] = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    target_path: str
+    target_symbol: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    failure_type: str = Field(min_length=1)
+    failure_stage: FailureStage
+    failure_code: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=500)
+    diagnostics: dict[str, str | int | bool | None]
+    attempt: int = Field(ge=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("failure_id", "candidate_id", "repair_id")
+    @classmethod
+    def valid_failure_uuid(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        UUID(value)
+        return value
+
+
+class RepairProposal(StrictModel):
     rationale: str = Field(min_length=1)
     patch: str = Field(min_length=1)
     regression_test: str = Field(min_length=1)
     optional_policy_artifact: str | None = None
+    repair_id: str
+    trace_id: str
+    boundary_id: str
+    evidence_ids: list[str] = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    target_path: str
+    target_symbol: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    failure_type: str = Field(min_length=1)
+
+    @field_validator("rationale")
+    @classmethod
+    def non_empty_rationale(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("rationale must be non-empty")
+        return value
+
+    @field_validator("optional_policy_artifact")
+    @classmethod
+    def non_empty_policy_when_present(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("optional_policy_artifact must be non-empty when present")
+        return value
 
     @field_validator("regression_test")
     @classmethod
@@ -102,29 +184,6 @@ class GeneratedRepair(StrictModel):
             raise ValueError("regression_test must contain a test function with an assertion")
         return value
 
-    @model_validator(mode="after")
-    def structurally_valid_single_target_patch(self) -> "GeneratedRepair":
-        headers = [line for line in self.patch.splitlines()
-                   if line.startswith("--- ") or line.startswith("+++ ")]
-        if (len(headers) != 2 or not headers[0].startswith("--- a/")
-                or not headers[1].startswith("+++ b/")
-                or headers[0][6:] != headers[1][6:] or "@@" not in self.patch):
-            raise ValueError("patch must be a structurally valid single-target unified diff")
-        return self
-
-
-class RepairProposal(GeneratedRepair):
-    repair_id: str
-    trace_id: str
-    boundary_id: str
-    evidence_ids: list[str] = Field(min_length=1)
-    provider: str = Field(min_length=1)
-    model: str = Field(min_length=1)
-    target_path: str
-    target_symbol: str
-    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    failure_type: str = Field(min_length=1)
-
     @field_validator("repair_id")
     @classmethod
     def valid_repair_id(cls, value: str) -> str:
@@ -137,7 +196,12 @@ class RepairProposal(GeneratedRepair):
         expected_new = f"+++ b/{self.target_path}"
         headers = [line for line in self.patch.splitlines()
                    if line.startswith("--- ") or line.startswith("+++ ")]
-        if headers != [expected_old, expected_new]:
+        changed_lines = [line for line in self.patch.splitlines()
+                         if line.startswith(("+", "-"))
+                         and not line.startswith(("+++ ", "--- "))]
+        if headers != [expected_old, expected_new] or not any(
+            line.startswith("@@") for line in self.patch.splitlines()
+        ) or any("Kestrel-7749" in line for line in changed_lines):
             raise ValueError("patch must be a single-target unified diff for target_path")
         return self
 

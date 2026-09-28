@@ -8,9 +8,9 @@ The eventual loop is ATTACK → TRACE → PATCH → BUILD → RE-ATTACK → PROV
 - `attacks`: async attack protocol and one indirect-injection attack using httpx.
 - `verification`: exact case-sensitive canary substring detection against response text only, with no model judgment.
 - `tracing`: structured user-message, tool-call, tool-result, model-response and verdict events. M2 adds linked context-flow evidence and actionable source locations; it does not infer hidden reasoning.
-- `remediation`: derives bounded source context and trusted repair provenance from M2 evidence, asks a replaceable provider only for `GeneratedRepair` content, validates it, and deterministically assembles a `RepairProposal` without applying it.
+- `remediation`: derives bounded source context and trusted repair provenance from M2 evidence, decodes provider content as an untrusted `GeneratedRepairCandidate`, and deterministically returns either `RepairProposal` or `RepairFailure` without applying anything.
 - `patching`: retains the earlier deterministic plan and proof only as a legacy/test-double compatibility path.
-- `sandbox`: copies an allowlisted project subset to a temporary directory, applies the M3 plan there, runs fixed build/test commands, captures structured results, bounds retries, checks the original digest, and cleans up.
+- `sandbox`: executes one exact validated M3 proposal in a disposable allowlisted workspace, captures fixed command evidence, checks source identity and patch scope, verifies the original digest, and cleans up. The older deterministic plan/retry path remains compatibility-only.
 - `cli`: invokes the loopback demo, prints evidence and a concrete verdict.
 
 The innocent request and poisoned fixture do not contain the canary value. The fixture refers to ADMIN_SECRET. The victim passes both privileged instructions containing the synthetic secret and untrusted review data to the model. Although the context has named fields, there is no enforced trust policy. The simulator deliberately promotes the review instruction to privileged behavior and extracts the canary from system context.
@@ -60,56 +60,109 @@ content without network access.
 M3.3 restores the trust boundary between deterministic state and generated
 content. `RepairContext` contains the trace/boundary/evidence IDs,
 provider/model identity, authorized path and symbol, source hash, and failure
-type. The provider schema is the smaller `GeneratedRepair`: rationale, patch,
-regression test, and optional policy artifact only. Extra fields are forbidden.
-After strict JSON, diff, and Python-test validation, Gauntlet generates the
+type. The provider schema contains only rationale, patch, regression test, and
+optional policy artifact. Extra fields are forbidden. After deterministic
+candidate validation, Gauntlet generates the
 repair UUID and assembles `RepairProposal` from `RepairContext` plus
-`GeneratedRepair`. The model cannot redefine authoritative metadata.
+generated content. The model cannot redefine authoritative metadata.
+
+M3.4 adds the candidate-validation boundary. Provider JSON is decoded into
+`GeneratedRepairCandidate` using only exact-field, basic-type, and size checks;
+malformed patch or Python strings remain representable. `validate_candidate`
+then checks, in order: non-empty rationale, unified-diff structure, target and
+canary authorization, Python syntax, test function/assertion structure, and an
+optional non-empty policy artifact. It performs no repairs. A passing candidate
+becomes `RepairProposal`. A rejected candidate becomes `RepairFailure` with
+trusted trace/source identity, stage and code, bounded redacted diagnostics,
+attempt number, timestamp, and hashes/lengths that identify the exact candidate
+without persisting arbitrary generated code or provider envelopes.
 
 This is a security architecture correction, not a workaround for invalid AI
 output. The model proposes remediation content. Gauntlet owns identity,
 provenance, authorization, source integrity, validation, application, and
 verification. `RepairProposal` means a validated proposal assembled with
-trusted provenance; it does not mean the patch was applied or verified. Model
+trusted provenance; `RepairFailure` means deterministic rejection evidence.
+Neither means the patch was applied or verified. Model
 artifact quality remains subject to Gauntlet validation, and the workflow
 confirms that authorized source bytes are unchanged after generation.
 
-M3.1 returns only the proposal. **Repair proposed != Patch applied != Patch
-verified.** The legacy deterministic apply/re-attack code is explicitly marked
+M3 returns a proposal or failure. **Repair candidate != Repair proposal !=
+Applied patch != Patch proof.** The legacy deterministic apply/re-attack code is explicitly marked
 as a compatibility test double and is not the provider-backed architecture.
 
-## M4 — Isolated Sandbox Repair Loop
+## M4.1 — Execute and Prove One Validated Proposal
 
-`SandboxWorkspace` accepts the repository-local source root and copies only
-four required inputs: `pyproject.toml`, `src`, `victims`, and
-`sandbox_checks`. It records the Git revision when available, allocates a
-unique temporary directory, rejects absolute and traversal paths, and removes
-the directory unless retention was explicitly requested for debugging.
+`RepairProposalEnvelope` is the deterministic M3-to-M4 handoff. Its version
+marker, canonical proposal digest, patch digest, and regression-test digest
+protect the exact repair UUID, trusted provenance, generated artifacts, and
+optional policy artifact during persistence and load. M4 neither regenerates
+nor edits them.
 
-The current applicator consumes the legacy `PatchPlan`. It accepts only
-`victims/customer_support/agent.py` and `CustomerSupportAgent.chat`, parses the
-symbol, verifies the exact integration seam, and writes only the resolved file
-inside the sandbox. `PatchApplicationResult` records its patch/workspace IDs,
-changed files, timestamp, and error.
+`M41RepairExecutor` creates one fresh `SandboxWorkspace`, which copies only
+`pyproject.toml`, `src`, `victims`, `sandbox_checks`, and `tests`. Before any
+patch command, it extracts the same authorized class-method span as M3 and
+requires its SHA-256 to equal `RepairProposal.source_hash`. It writes the patch
+bytes to a separate artifact path and runs `git apply --verbose`. A before/after
+allowlist snapshot must show exactly the proposal target changed. The generated
+test is later written byte-for-byte to a separate `.gauntlet` path, so it does
+not count as a patch change.
 
-`SandboxCommandRunner` exposes only BUILD and TEST enum categories. BUILD runs
-Python compilation for `src` and `victims`; TEST runs the two explicit sandbox
-repair checks. It never accepts shell strings. Both commands use the sandbox
-as their working directory, put the sandbox's source first on `PYTHONPATH`,
-have a timeout, and capture argv, exit code, stdout, stderr, duration, working
-directory, and workspace ID.
+The fixed runner then executes compileall, the generated regression alone,
+the frozen P100 check, the frozen P200 check, and the broader compatible
+verifier/utility/CLI tests. Frozen tests whose contract is to reproduce the
+unpatched M1/M2 vulnerability cannot describe correct behavior in the patched
+copy, so they remain in the complete suite against the unchanged real source.
+Commands run with the copy as cwd and first on `PYTHONPATH`; they have timeouts
+and bounded stdout/stderr. M4.1 accepts no caller-supplied success booleans.
 
-`SandboxRepairOrchestrator` allows at most three attempts. Patch, build, and
-test failures become `RepairFailure` values with observable command evidence.
-A legacy `RepairProposalClient` receives the existing plan, relevant source,
-and the failure; its deterministic offline result is currently discarded.
-M4 is therefore partial until M4.1 applies the exact M3.1 proposal and generated
-regression test. No M4.1 or M5 work is included in this milestone.
+`PatchProof` retains repair and trace provenance, original and patched source
+hashes, patch and regression digests, workspace/revision identity, changed
+files, all six command results, timestamps, cleanup, and real-repository
+immutability. Its model validator permits `VERIFIED` only when every command
+passed, exactly the authorized target changed, the source changed, cleanup
+completed, and the real repository remained unchanged. Failures stop the one
+attempt and produce M3.4-compatible `RepairFailure` at `source_identity`,
+`patch_authorization`, `patch_apply`, `compile`, `regression_execution`,
+`security_test`, `utility_test`, or `existing_suite`, with bounded diagnostics.
 
-Success requires patch application, build and sandbox regression success,
-unchanged original repository digest, and cleanup. The sandbox regression
-repeats P100 against the patched default and checks useful P200 content. This
-is process-level disposable-copy isolation, not an OS container or network
-sandbox. The fixed commands need no network and cannot select external targets,
-but M4 does not implement syscall-level network denial. It remains specific to
-this synthetic Python repository and does not execute arbitrary repositories.
+The older `PatchPlan` applicator and retry orchestrator remain for frozen
+compatibility tests. M4.1 does not call them or activate the victim's existing
+defensive constructor switch. M4.2 uses structured failure evidence for a
+bounded revised proposal; no retry exists in M4.1 itself.
+
+This is disposable workspace/process isolation, not an OS sandbox, container,
+or filesystem containment mechanism. It remains specific to this synthetic
+Python repository and does not implement syscall-level network denial.
+
+## M4.2 — Bounded Autonomous Remediation Retry
+
+`M42RepairOrchestrator` reconstructs the frozen M3 `SourceContext`,
+`RepairContext`, and first-attempt `RemediationRequest`, then permits at most
+three provider calls. Attempt one uses the normal M3 prompt. Later calls use a
+separate revision message containing the original security objective and
+authorized source, a bounded redacted view of the previous candidate, and the
+previous `RepairFailure` stage, code, message, and safe diagnostics. Lightning
+retains `enable_thinking=false`, `max_tokens=4096`, and the exact strict
+`GeneratedRepairCandidate` JSON schema.
+
+Every response is decoded and deterministically validated from scratch. A
+retry whose candidate digest matches any earlier attempt is rejected before
+execution. M4.2 never edits generated code, reuses a proposal automatically,
+or activates legacy defensive behavior. Each validated proposal is handed to a
+new `M41RepairExecutor`, which creates a new disposable workspace and repeats
+source identity, exact application, compilation, regression, P100, P200, and
+broader-suite verification against the trusted baseline.
+
+`RepairAttempt` separates `PROVIDER_CALL`, `CANDIDATE_DECODE`,
+`CANDIDATE_VALIDATION`, `PROPOSAL_EXECUTION`, and `PATCH_PROOF`. It retains
+candidate and prior-failure lineage, safe completion metadata, proposal/proof
+identifiers, timing, and a structured failure when unverified. A run returns
+`RepairRunSucceeded` only by retaining the final M4.1 `PatchProof`; after three
+failures it returns `RepairRunFailed` and cannot make attempt four.
+
+`gauntlet.repair-run.v1` persists the terminal result and complete safe attempt
+lineage with a canonical SHA-256 integrity digest. Generated proposal artifacts
+and bounded command evidence may be retained for review, while API keys,
+authorization headers, hidden reasoning, and raw provider envelopes are not.
+The real repository digest is checked across the complete run. This milestone
+is verified offline only; a live bounded run requires separate authorization.

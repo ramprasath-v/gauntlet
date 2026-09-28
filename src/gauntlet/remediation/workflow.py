@@ -1,18 +1,18 @@
 from pathlib import Path
-from uuid import uuid4
 
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import (
-    RemediationRequest, RepairContext, RepairProposal,
+    RemediationRequest, RepairContext, RepairFailure, RepairProposal,
 )
-from gauntlet.remediation.parsing import parse_generated_repair
+from gauntlet.remediation.parsing import parse_generated_repair_candidate
 from gauntlet.remediation.provider import RemediationProvider
+from gauntlet.remediation.validation import validate_candidate
 from gauntlet.tracing.models import AttackTrace
 
 
 async def generate_repair_proposal(
     serialized_trace: str, repository_root: Path, provider: RemediationProvider
-) -> RepairProposal:
+) -> RepairProposal | RepairFailure:
     trace = AttackTrace.model_validate_json(serialized_trace)
     source = build_source_context(serialized_trace, repository_root)
     target = repository_root / source.repository_relative_path
@@ -38,12 +38,8 @@ async def generate_repair_proposal(
         },
     )
     raw = await provider.generate(request)
-    generated = parse_generated_repair(raw)
-    proposal = RepairProposal(
-        repair_id=str(uuid4()),
-        **repair_context.model_dump(),
-        **generated.model_dump(),
-    )
+    candidate = parse_generated_repair_candidate(raw)
+    result = validate_candidate(candidate, repair_context)
     if target.read_bytes() != before:
         raise RuntimeError("M3.1 provider flow modified repository source")
-    return proposal
+    return result

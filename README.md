@@ -62,7 +62,7 @@ CustomerSupportAgent.chat
 The M3.1 `propose-repair` command consumes a serialized M2 `AttackTrace` and
 `FailureBoundary`, reads only the authorized `CustomerSupportAgent.chat`
 source span, builds a trusted `RepairContext`, and asks a provider abstraction
-for strict remediation content as `GeneratedRepair`.
+for four typed remediation fields as an untrusted `GeneratedRepairCandidate`.
 The default command uses an offline deterministic provider substitute so the
 complete contract can be tested without credentials. The separate
 `nebius-repair-smoke` command uses Nebius Token Factory with the configured
@@ -72,11 +72,14 @@ The model generates only rationale, a single-target unified diff, executable
 Python regression-test source, and an optional policy artifact. Gauntlet owns
 the repair UUID, trace/boundary/evidence IDs, provider/model identity, source
 hash, authorized target, failure type, validation, application, and
-verification. After `GeneratedRepair` passes strict validation, Gauntlet
-deterministically assembles the final `RepairProposal` from that content and
-the trusted context. Extra model fields are rejected, so the model cannot
-override provenance. The offline proposal's diff passes `git apply --check`,
-while the source file remains byte-for-byte unchanged.
+verification. Candidate decoding checks only the exact fields, types, and size
+bounds, preserving malformed code as evidence. A deterministic validator then
+checks rationale, diff format, authorization, Python syntax, test structure,
+and the optional policy artifact in a fixed order. Success produces a
+`RepairProposal` with trusted provenance; rejection produces a serializable
+`RepairFailure` with a safe diagnostic and content digests. Extra model fields
+are rejected, so the model cannot override provenance. The source file remains
+byte-for-byte unchanged.
 
 Exit codes: 0 = exploit confirmed, 1 = canary not observed, 2 = invalid arguments/execution failure. Absence of the canary alone is not a safety proof. Structured events are returned by `/chat` and included in `AttackResult`. M2 adds an evidence-backed attack path, supporting event IDs, trust-boundary evidence, and the actionable source symbol. These are observations, not hidden model reasoning.
 
@@ -89,44 +92,51 @@ The CLI accepts only loopback HTTP origins, disables environment proxies and red
 M3.1's generated repair is constrained to the synthetic victim's
 `CustomerSupportAgent.chat` seam. Absolute paths, traversal, locations outside
 the repository, and locations that do not match M2 boundary evidence are
-rejected. A generated patch is still untrusted until later authorization,
-application, and verification stages succeed. The default app remains
-vulnerable so the frozen M1/M2 baseline can be reproduced. **Repair proposed
-!= Patch applied != Patch verified.**
+rejected. A decoded candidate remains untrusted until deterministic validation;
+a proposal remains unapplied and unverified. The default app remains
+vulnerable so the frozen M1/M2 baseline can be reproduced. **Repair candidate
+!= Repair proposal != Applied patch != Patch proof.**
 
 The former deterministic M3 proof remains only as the `legacy-prove` command
 and `legacy_prove_test_double` compatibility path for frozen tests. It is not
 the provider-backed M3.1 architecture.
 
-The current, partial M4 `sandbox-prove` command creates a fresh temporary directory, copies only
-`pyproject.toml`, `src`, `victims`, and `sandbox_checks`, applies the existing
-legacy deterministic plan at the authorized file/symbol, compiles and tests inside that directory,
-compares the original repository digest, and removes the copy. Its command
-runner exposes only fixed BUILD and TEST categories; it does not accept shell
-text or arbitrary commands. A later M4.1 must consume and apply the exact M3.1
-proposal and generated regression test; that work has not started.
+M4.1 consumes one existing validated `RepairProposal`, optionally through its
+versioned and integrity-checked persisted handoff. It creates a fresh temporary
+directory containing only `pyproject.toml`, `src`, `victims`,
+`sandbox_checks`, and `tests`; verifies the exact M3 source-symbol hash; and
+applies the proposal diff unchanged with `git apply`. It then compiles the
+patched source, materializes the generated regression test unchanged, runs that
+test, repeats the frozen P100 security and P200 utility checks, and runs the
+compatible verifier/utility/CLI suite. Every result comes from captured command
+evidence. Only after all commands pass, only the authorized target changed,
+the original repository digest is unchanged, and the temporary directory is
+removed can M4.1 construct `PatchProof(status="VERIFIED")`.
 
-```text
-SANDBOX REPAIR
+This is disposable workspace/process isolation. It is not an OS sandbox,
+container, or filesystem containment boundary. The frozen M1/M2 tests that
+deliberately assert the vulnerable baseline are excluded from the patched-copy
+broader suite; the complete repository suite still runs against the unchanged
+real source. The earlier `sandbox-prove` deterministic plan/retry loop remains
+only as a legacy compatibility path and is not used by M4.1.
 
-PATCH
-Applied: YES
-Original workspace modified: NO
+M4.2 adds bounded autonomous remediation retry. Attempt one uses the frozen M3
+prompt and strict `GeneratedRepairCandidate` schema. If deterministic candidate
+validation or M4.1 execution returns `RepairFailure`, attempts two and three
+send Lightning the same trusted source context, a bounded redacted view of the
+prior candidate, and safe structured failure feedback. Each retry must return a
+new candidate digest, and every valid proposal starts in a fresh disposable
+workspace based on the original source. The run stops after at most three
+provider calls. Success has no separate shortcut: it requires the existing
+M4.1 `PatchProof(status="VERIFIED")`.
 
-BUILD
-PASS
-
-TESTS
-PASS
-
-CONTAINMENT
-Workspace isolation: PASS
-Outside writes: NONE
-Cleanup: PASS
-
-RESULT
-SANDBOX REPAIR VERIFIED
-```
+M4.2 records each provider call, decode, validation, proposal execution, and
+proof outcome in explicit attempt lineage. A versioned integrity-checked run
+artifact contains safe completion metadata, proposal/failure/proof evidence,
+timing, final status, and repository immutability. It excludes credentials,
+authorization headers, hidden reasoning, and arbitrary provider envelopes.
+The offline implementation is complete; no successful live autonomous repair
+is claimed yet.
 
 `Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. Offline operation requires no credentials. Live M3 uses `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL`; `.env.example` records the approved Token Factory base URL and selected `nvidia/Nemotron-3_5-Lightning` model. The client uses the OpenAI-compatible `/v1/chat/completions` API with Bearer authentication and JSON-schema structured output. It accepts only approved Nebius HTTPS hosts and reads actual environment variables; it does not automatically load `.env` files.
 

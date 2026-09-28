@@ -38,30 +38,69 @@ The earlier deterministic apply/re-attack workflow remains explicitly named
 
 ## M3.3 — Trusted Provenance Assembly
 
-Status: IN PROGRESS; live quality success has not yet been established.
+Status: COMPLETE OFFLINE. Live provider generation and structured candidate
+decoding have been demonstrated; live artifact quality was imperfect.
 
 Gauntlet now creates a trusted `RepairContext` from the deterministic trace,
 bounded source context, and configured provider. Lightning returns only a
-strict `GeneratedRepair` containing rationale, patch, regression test, and an
-optional policy artifact. Gauntlet generates the repair UUID and combines the
-two only after generated-content validation. Authoritative provenance no
-longer originates from an untrusted model and cannot be overridden by it.
+strict four-field generated payload containing rationale, patch, regression
+test, and an optional policy artifact. Gauntlet generates the repair UUID and
+combines the two only after generated-content validation. Authoritative
+provenance no longer originates from an untrusted model and cannot be
+overridden by it.
 
 This architectural correction does not accept or repair malformed model
-output. Artifact quality remains subject to the same strict validators and a
-future live quality gate. `RepairProposal` remains a proposal with trusted
-provenance, not an applied or verified patch.
+output. Artifact quality remains subject to deterministic validation.
+`RepairProposal` remains a proposal with trusted provenance, not an applied or
+verified patch.
+
+## M3.4 — Repair Candidate Validation Boundary
+
+Status: COMPLETE OFFLINE. M3 is frozen after this milestone. Full suite: 112
+passed, 0 failed.
+
+Provider output first becomes `GeneratedRepairCandidate`, which establishes
+only that the expected four JSON fields decoded with basic types and bounds.
+The candidate can contain malformed code. A deterministic validator returns a
+strict `RepairProposal` on success or structured `RepairFailure` on rationale,
+patch-format, authorization, regression-syntax, regression-structure, or policy
+failure. Failure evidence retains trusted identity plus safe diagnostics and
+candidate digests without treating malformed code as a proposal.
+
+The final live M3 evidence is classified as provider call PASS, candidate
+decode PASS, candidate validation FAIL at `regression_syntax`. That is evidence
+the boundary is needed, not a connectivity failure. M3 completion means
+Gauntlet can generate, capture, validate, and accept or reject a candidate
+safely. Patch retry, application, execution, security testing, and utility
+proof move to M4.1.
 
 ## M4 — Sandbox Repair Loop
 
-Status: PARTIAL. A disposable allowlisted copy receives the legacy PatchPlan,
-build and repair-specific tests execute with that copy as cwd, failures are
-structured, retry attempts are capped at three, the original digest remains
-unchanged, and successful runs clean up the copy. Full repository suite: 53
-passed, 0 failed (41 frozen M1-M3 + 12 M4).
+Status: READY FOR LIVE M4.2. M4.1 is frozen and M4.2 is COMPLETE OFFLINE. Full
+repository suite: 133 passed, 0 failed.
 
-M4 does not yet consume the exact M3.1 `RepairProposal` or its generated test,
-and retry proposals are not yet applied. That is future M4.1 work.
+M4.1 executes exactly one existing validated `RepairProposal` in a fresh
+disposable allowlisted workspace. It verifies the M3 source-symbol hash, applies
+the exact diff through `git apply`, enforces single-target scope, compiles,
+materializes and runs the exact generated regression, repeats frozen P100 and
+P200 verification, and runs the broader compatible existing suite. Successful
+`PatchProof` is derived from all six command records plus cleanup and unchanged
+real-repository evidence. Every failure returns a structured `RepairFailure`
+and stops the attempt.
+
+The M3-to-M4 handoff is versioned, deterministic, integrity checked, and
+round-trip tested. The legacy predetermined applicator and retry orchestrator
+remain compatibility-only and are bypassed by M4.1 and M4.2.
+
+M4.2 performs at most three Lightning calls. Candidate validation and M4.1
+execution failures become bounded redacted revision feedback; repeated
+candidate digests are rejected; and every executable proposal receives a fresh
+workspace. Explicit attempt lineage distinguishes provider call, candidate
+decode, deterministic validation, proposal execution, and proof. Success
+requires the existing M4.1 `PatchProof(status="VERIFIED")`; three failures
+produce `RepairRunFailed` with no fourth call. Versioned run evidence is
+integrity checked. All provider behavior is covered by deterministic offline
+fakes and HTTP mock transport. No live M4.2 run has occurred.
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 

@@ -7,7 +7,7 @@ import tempfile
 from uuid import uuid4
 
 
-REQUIRED_PATHS = ("pyproject.toml", "src", "victims", "sandbox_checks")
+REQUIRED_PATHS = ("pyproject.toml", "src", "victims", "sandbox_checks", "tests")
 
 
 def repository_digest(root: Path) -> str:

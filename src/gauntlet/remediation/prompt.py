@@ -1,13 +1,14 @@
 import json
 
-from gauntlet.remediation.models import GeneratedRepair, RemediationRequest
+from gauntlet.remediation.models import GeneratedRepairCandidate, RemediationRequest
 
 
 SYSTEM_PROMPT = """You are generating a repair for an authorized defensive benchmark.
 You are generating remediation CONTENT, not trusted provenance. Gauntlet owns
 identity, provenance, authorization, source integrity, validation, application,
 and verification. Return only rationale, patch, regression_test, and the optional
-policy artifact requested by the schema.
+policy artifact requested by the schema. Your response is an untrusted repair
+candidate until Gauntlet validates it deterministically.
 The target is a synthetic local victim application owned by the requester.
 Use only the supplied execution evidence and bounded source context.
 Modify only the authorized target_path and target_symbol.
@@ -35,7 +36,30 @@ string. Do not claim hidden model reasoning or unsupported causality."""
 
 def build_messages(request: RemediationRequest) -> list[dict[str, str]]:
     payload = request.model_dump(mode="json")
-    payload["required_output_schema"] = GeneratedRepair.model_json_schema()
+    payload["required_output_schema"] = GeneratedRepairCandidate.model_json_schema()
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+    ]
+
+
+def build_revision_messages(
+    request: RemediationRequest,
+    *,
+    previous_candidate: dict[str, str | None],
+    failure_feedback: dict[str, object],
+) -> list[dict[str, str]]:
+    """Build a retry prompt without changing the frozen first-attempt prompt."""
+    payload = request.model_dump(mode="json")
+    payload["required_output_schema"] = GeneratedRepairCandidate.model_json_schema()
+    payload["revision"] = {
+        "instruction": (
+            "Produce a new revised candidate. Address the recorded failure and "
+            "do not repeat it. Do not copy the previous candidate unchanged."
+        ),
+        "previous_candidate": previous_candidate,
+        "previous_failure": failure_feedback,
+    }
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},

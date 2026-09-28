@@ -8,6 +8,11 @@ from pydantic import BaseModel
 class CommandCategory(StrEnum):
     BUILD = "BUILD"
     TEST = "TEST"
+    PATCH_APPLY = "PATCH_APPLY"
+    GENERATED_REGRESSION = "GENERATED_REGRESSION"
+    SECURITY = "SECURITY"
+    UTILITY = "UTILITY"
+    EXISTING_SUITE = "EXISTING_SUITE"
 
 
 class FailureCategory(StrEnum):

@@ -953,3 +953,267 @@ M1/M2 behavior. Full suite: 106 passed, 0 failed. Victim digest before and after
 `dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`.
 The victim tree has no diff. One final controlled Lightning live validation of
 the corrected content-only contract is justified. M4.1 and M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: Final M3 Live Quality Gate — M3.3 Architecture
+
+Final decision:
+- `LIVE_PROVIDER = PASS`
+- `GENERATED_REPAIR = FAIL`
+- `TRUSTED_PROVENANCE = FAIL`
+- `PATCH_AUTHORIZATION = FAIL`
+- `SECURITY_REPAIR_QUALITY = FAIL`
+- `PATCH_APPLICABILITY = FAIL`
+- `REGRESSION_TEST_QUALITY = FAIL`
+- `REPOSITORY_IMMUTABILITY = PASS`
+- `M3_LIVE_QUALITY_GATE = FAIL`
+- `M3_STATUS = INCOMPLETE`
+- `NEXT = REVIEW_M3_FAILURE`
+
+Exactly one live inference request was made. No retry or follow-up provider
+request occurred. Before transport, the runner verified the frozen M3.3
+contract: model `nvidia/Nemotron-3_5-Lightning`, global Token Factory endpoint,
+`chat_template_kwargs={"enable_thinking": false}`, `max_tokens=4096`, no
+`/no_think`, and the strict `GeneratedRepair` schema containing only rationale,
+patch, regression test, and optional policy artifact. The response schema had
+`additionalProperties=false` and contained no trusted provenance fields.
+
+Sanitized provider result:
+- endpoint: `https://api.tokenfactory.nebius.com/v1/chat/completions`
+- HTTP status: 200
+- response ID: `chatcmpl-574a79ef`
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- finish reason: `stop`
+- end-to-end latency: 7.004 seconds
+- prompt tokens: 1,962
+- completion tokens: 1,807
+- total tokens: 3,769
+- content type: `str`; content length: 8,319 characters
+- reasoning field: present, type `null`
+- reasoning_content field: present, type `null`
+- refusal field: present, type `null`; this is not evidence of refusal
+- tool_calls field: present, type `null`
+
+`message.content` remained the only generated-repair channel. The content
+decoded as structured JSON and reached strict `GeneratedRepair` field
+validation, but its `regression_test` failed `ast.parse()`. Safe diagnostic:
+
+```text
+regression_test must be valid Python source
+message="invalid syntax"
+line=1
+offset=21
+source_length=2311
+window="import pytestimport refrom unittest.mock import patch, AsyncMockfrom "
+```
+
+The diagnostic establishes that multiple import statements were concatenated
+without valid separators. Gauntlet did not insert newlines, repair Python,
+rewrite output, extract code heuristically, or retry. Consequently no valid
+`GeneratedRepair` existed and Gauntlet did not assemble a `RepairProposal`.
+Trusted provenance would have come exclusively from `RepairContext`, but that
+assembly gate was not reached; it is therefore recorded as failed for the final
+all-gates-required decision.
+
+Patch authorization, security-repair quality, exact patch applicability, and
+semantic regression-test quality could not be established from a rejected
+generation and are recorded as failed. No generated patch was applied to the
+real repository or a disposable copy, and no generated regression test was
+executed. No model-generated artifacts are presented as a valid proposal.
+
+Victim digest before and after was
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`;
+repository immutability passed. This was the final controlled M3 live quality
+gate. M3 remains incomplete and requires review rather than another automatic
+request, prompt adjustment, or model switch. M4.1 and M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.4 — Repair Candidate Validation Boundary
+
+Result: `M3_4_IMPLEMENTATION = PASS`; M3 status: `COMPLETE OFFLINE`.
+No live Nebius request was made. The full suite passed with 112 tests.
+
+M3.4 clarifies the final live result without changing its historical facts.
+The request received HTTP 200, a normal stop, and expected four-field structured
+JSON. Its proper boundary classification is:
+
+- `PROVIDER_CALL = PASS`
+- `CANDIDATE_DECODE = PASS`
+- `CANDIDATE_VALIDATION = FAIL`
+- `failure_stage = regression_syntax`
+
+The generated Python beginning `import pytestimport refrom ...` was an invalid
+repair candidate, not a provider/connectivity failure and not a
+`RepairProposal`.
+
+Final M3 flow:
+
+```text
+AttackTrace
+  -> FailureBoundary
+  -> SourceContext
+  -> RepairContext                  [trusted]
+  -> Lightning
+  -> GeneratedRepairCandidate       [untrusted]
+  -> deterministic validation
+       PASS -> RepairProposal       [validated, trusted provenance]
+       FAIL -> RepairFailure        [structured deterministic evidence]
+```
+
+`GeneratedRepairCandidate` has exactly four provider-owned fields: rationale,
+patch, regression test, and optional policy artifact. Candidate decoding checks
+only the JSON object contract, exact fields, basic types, and field-size bounds.
+It preserves model strings exactly after normal JSON decoding and deliberately
+does not run Python parsing, diff semantics, authorization, applicability, or
+pytest checks.
+
+The deterministic validator runs in this fixed order:
+
+1. non-empty rationale
+2. single-target unified-diff format
+3. authorized target and no canary-literal modification
+4. Python regression syntax using `ast.parse()`
+5. top-level `test_*` function and assertion structure
+6. non-empty optional policy artifact when present
+
+No failing content is repaired, normalized, rewritten, or heuristically
+extracted. A passing candidate receives a Gauntlet-generated repair UUID and
+trusted trace, boundary, evidence, provider/model, target, source hash, and
+failure type from `RepairContext`.
+
+`RepairFailure` records a Gauntlet-generated failure ID and candidate ID,
+candidate and per-field SHA-256 digests, field lengths, trusted provenance,
+failure stage/code, bounded human-readable message, safe structured
+diagnostics, attempt number, and UTC timestamp. Supported stages include the
+implemented candidate-validation, patch-format, patch-authorization,
+regression-syntax, and regression-structure stages, plus declared future M4
+stages for patch apply, compile, regression execution, security test, and
+utility test. Declaring those stages does not implement them. Arbitrary full
+candidate code, provider envelopes, credentials, authorization headers, and
+hidden reasoning are not persisted in failure serialization.
+
+Offline replay of the observed malformed-import class proves candidate decode
+succeeds, deterministic validation returns `RepairFailure` with
+`regression_syntax`, line 1 and offset 21 are preserved safely, no proposal is
+created, and source is unchanged. The success fixture proves a valid candidate
+becomes `RepairProposal` with all authoritative fields sourced from Gauntlet.
+Tests also cover missing test functions/assertions, malformed diffs,
+unauthorized paths, metadata override rejection, safe redacted serialization,
+and all frozen M1/M2 behavior.
+
+Victim digest before and after:
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`.
+The victim tree has no diff.
+
+M3 is now frozen. `COMPLETE OFFLINE` means Gauntlet can generate, capture,
+validate, and accept or reject a provider-generated candidate safely. It does
+not mean a live model has generated a proven patch. Bounded retry, patch
+application, execution, security retesting, utility validation, and proof
+belong to M4.1. No further M3 live smoke is recommended; existing live evidence
+already demonstrates provider connectivity and Lightning generation. Next:
+M4.1. M4.1 and M5 were not implemented in this milestone.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M4.1 — Execute and Prove a Validated RepairProposal
+
+Result: `M4_1_IMPLEMENTATION = PASS`; M4 status: `IN_PROGRESS`; next: M4.2.
+No live Nebius request was made. The full repository suite passed with 122
+tests. The real victim-tree digest was
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`
+before and after execution.
+
+M4.1 now loads the exact validated M3 proposal from a versioned,
+integrity-checked handoff or accepts the in-memory model directly. One fresh
+disposable workspace verifies the same bounded source-symbol SHA-256 used by
+M3, applies the proposal's exact patch bytes with `git apply --verbose`, and
+requires the resulting allowlisted diff to contain only the authorized target.
+It does not invoke the legacy predetermined applicator, use an `AppliedPatch`
+record as proof, or activate `create_app(enforce_tool_data_boundary=True)`.
+
+The successful offline proposal produced command evidence for:
+
+1. `git apply --verbose .gauntlet/artifacts/repair.patch`
+2. `python -m compileall -q src victims`
+3. `python -m pytest -q .gauntlet/generated_tests/test_generated_repair.py`
+4. `python -m pytest -q sandbox_checks/test_repair.py::test_same_attack_is_blocked_by_sandbox_patch`
+5. `python -m pytest -q sandbox_checks/test_repair.py::test_clean_review_remains_useful_after_sandbox_patch`
+6. `python -m pytest -q tests/test_canary_verifier.py tests/test_customer_support_utility.py tests/test_cli.py`
+
+The interpreter path is recorded as the executing virtual environment's
+absolute Python path in actual `CommandResult.argv`. The patched-copy broader
+set excludes frozen tests whose stated purpose is to reproduce the vulnerable
+M1/M2 baseline. The complete suite, including those tests, ran against the
+unchanged real repository.
+
+`PatchProof` now records proof/repair/trace/boundary/evidence identity, target,
+original and patched source hashes, exact artifact digests, workspace and Git
+revision identity, changed files, all six command results, start/completion
+times, duration, cleanup, real-repository immutability, and final `VERIFIED`
+status. Model validation rejects VERIFIED unless every command passed, exactly
+one authorized file changed, the target source changed, cleanup completed, and
+the original inputs remained unchanged.
+
+Offline failure coverage proves deterministic stops for source mismatch, patch
+application, compile, generated regression, P100 security, P200 utility,
+broader existing tests, and unauthorized post-patch changes. It also proves a
+changed proposal patch changes the disposable target and cannot fall back to
+the victim's defensive constructor switch. Handoff round-trip and tamper tests
+preserve semantic identity and patch/test digests. M4.1 performs one attempt
+and no provider retry. M4.2 and M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M4.2 — Bounded Autonomous Remediation Retry (Offline)
+
+Result: `M4_2_OFFLINE_IMPLEMENTATION = PASS`; M4 status:
+`READY_FOR_LIVE_M4_2`. No live Nebius request was made. The full repository
+suite passed with 133 tests. The real victim-tree digest was
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`
+before and after.
+
+M4.2 now connects the existing provider contract to deterministic M3.4
+validation and the frozen M4.1 executor. The run permits at most three provider
+calls. Attempt one uses the normal M3 remediation messages. Attempts two and
+three use a separate revision payload with the original security objective,
+same authorized target and bounded source, a bounded redacted view of the
+previous candidate, and safe structured `RepairFailure` diagnostics. The real
+Lightning adapter continues to send `chat_template_kwargs={"enable_thinking":
+false}`, `max_tokens=4096`, and the unchanged strict
+`GeneratedRepairCandidate` schema.
+
+Each attempt records separate outcomes for provider call, candidate decode,
+candidate validation, proposal execution, and patch proof. It also retains
+attempt and candidate identity, previous failure lineage, candidate and field
+digests/lengths, provider/model, safe completion metadata, optional repair and
+proof IDs, workspace identity, timestamps, and duration. No API key,
+Authorization header, hidden reasoning, or arbitrary raw provider envelope is
+part of this evidence.
+
+Every retry makes a new provider call. Candidate digests are compared with all
+earlier attempts; an identical response becomes `duplicate_candidate` and is
+not executed. Every validated proposal constructs a new `M41RepairExecutor`,
+which creates and destroys a new disposable workspace based on the unchanged
+repository. A run succeeds only when that executor returns its existing
+command-derived `PatchProof(status="VERIFIED")`. Three failures return
+`RepairRunFailed` and the loop cannot issue attempt four.
+
+Offline scenarios cover candidate validation failure then success, patch apply
+failure then success, generated regression failure then success, P100 failure
+then success, P200 failure then success, three-attempt exhaustion, immediate
+first-attempt success, exact one/two/three provider-call counts, new candidate
+digests, duplicate-candidate rejection, distinct execution workspace IDs,
+repository immutability, redacted failure feedback, the unchanged Lightning
+request contract, and run-evidence round trip/tamper rejection.
+
+The persisted `gauntlet.repair-run.v1` envelope contains the terminal success
+or failure model plus complete safe attempt lineage and a canonical SHA-256
+result digest. This is suitable for later demo and submission evidence without
+claiming live autonomous repair success. A live bounded M4.2 run remains a
+separate explicitly authorized step. M5 was not started.

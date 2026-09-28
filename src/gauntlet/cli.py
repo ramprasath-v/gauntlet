@@ -17,6 +17,7 @@ from victims.customer_support.app import create_app
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import NebiusTokenFactoryClient
 from gauntlet.remediation.fake import FakeRemediationProvider
+from gauntlet.remediation.models import RepairFailure
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
 from gauntlet.remediation.workflow import generate_repair_proposal
 
@@ -95,7 +96,7 @@ async def propose_repair(*, live: bool, repository_root: Path | None = None) -> 
         before.trace.model_dump_json(), root, provider
     )
     print(proposal.model_dump_json(indent=2))
-    return 0
+    return 1 if isinstance(proposal, RepairFailure) else 0
 
 
 async def sandbox_prove(repository_root: Path | None = None) -> int:
