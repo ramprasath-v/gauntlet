@@ -400,3 +400,84 @@ passed, 0 failed.
 
 Attempt #4 is justified to evaluate the clarified prompt and improved
 diagnostics, but no live request was made in this task.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Fourth Single Live-Provider Smoke Validation
+
+Endpoint: `https://api.tokenfactory.us-central1.nebius.com/v1/chat/completions`.
+Model: `nvidia/nemotron-3-super-120b-a12b`.
+Request count: exactly 1; no retry.
+End-to-end latency: 41.70 seconds, including local P100 trace/context construction and the provider attempt.
+
+Result: `LIVE_PROVIDER_FAILED`. The API returned a successful HTTP response and
+the outer response envelope parsed, but `choices[0].message.content` was empty
+or non-text. The client does not retain the exact successful 2xx status. The
+application failure was: `Nebius response content was empty or non-text`.
+
+Validation results:
+- HTTP/API transport: PASS (successful response envelope; exact 2xx status not retained)
+- non-empty model content: FAIL
+- strict `RepairProposal` validation: NOT EVALUATED; no text content was available
+- provenance fields: NOT EVALUATED; no proposal was constructed
+- generated patch quality/applicability: NOT EVALUATED; no patch was returned
+- generated regression-test quality/syntax: NOT EVALUATED; no test was returned
+- repository source digest unchanged: PASS
+- M3.1 live quality gate: FAIL
+
+Provider friction: The accepted request produced an outer completion response
+without usable text in `message.content`. The response path did not preserve
+refusal or other message metadata, so this run does not establish why content
+was absent. No speculative fix is recorded.
+
+No patch was applied. No repository source was modified. M4.1 and M5 were not
+started. Per the smoke-test instruction, no retry was made.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Offline Successful-Response Observability
+
+Live request made during this work: No.
+
+Attempt #4 facts remain: HTTP transport succeeded, end-to-end latency was
+41.70 seconds, the completion envelope parsed, `message.content` had no usable
+text, no `RepairProposal` was constructed, and the repository source digest
+remained unchanged. The earlier client did not retain enough successful-response
+metadata to determine whether the response represented a refusal, token limit,
+reasoning-only output, tool call, or another empty-content condition. None of
+those explanations is assigned retroactively.
+
+Previous response handling retained only `choices[0].message.content`. It used
+the HTTP status for the error check and then discarded the successful status,
+response ID, object type, returned model, choice count/index, finish reason,
+message role and field shape, refusal/reasoning/tool-call metadata, and usage
+token counts.
+
+The client now retains and logs a sanitized `NebiusCompletionMetadata` snapshot
+before validating content. When available it contains exact HTTP status,
+response ID, object type, returned model, choice count, selected index, finish
+reason, message role, message field names and types, content type/length,
+refusal/reasoning/reasoning-content presence and types, tool-call presence/count,
+and prompt/completion/total token counts. Generated refusal and reasoning text,
+tool arguments, raw responses, authorization headers, and credentials are not
+logged. A successful textual completion is still returned unchanged through
+`message.content`; no other field is used as a proposal fallback.
+
+Empty-content diagnostics now distinguish `MISSING_CHOICES`, `NON_LIST_CHOICES`,
+`EMPTY_CHOICES`, `NON_OBJECT_CHOICE`, `MISSING_MESSAGE`, `NON_OBJECT_MESSAGE`,
+`CONTENT_MISSING`, `CONTENT_NULL`, `CONTENT_EMPTY`, `CONTENT_WHITESPACE`,
+`CONTENT_NON_STRING`, `REFUSAL_PRESENT`, `LENGTH_TERMINATED_WITHOUT_CONTENT`,
+`REASONING_WITHOUT_CONTENT`, `TOOL_CALLS_WITHOUT_CONTENT`, and a final
+`UNKNOWN_EMPTY_CONTENT` case.
+
+Offline tests cover normal text, null/empty/missing/non-string content, refusal
+metadata, normal-stop and length termination, reasoning/reasoning-content-only
+messages, tool-call-only messages, missing/empty choice structures, exact 2xx
+status retention, usage counts, and credential exclusion from both errors and
+logs. Full suite: 93 passed, 0 failed.
+
+Attempt #5 is justified because the next single response will provide enough
+sanitized evidence to classify an absent-content outcome, but no live request
+was made in this task.

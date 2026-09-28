@@ -7,7 +7,9 @@ from pydantic import ValidationError
 
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
-from gauntlet.llm.nebius import NebiusAPIError, NebiusTokenFactoryClient
+from gauntlet.llm.nebius import (
+    NebiusAPIError, NebiusCompletionError, NebiusTokenFactoryClient,
+)
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import RemediationRequest, RepairProposal
@@ -228,6 +230,102 @@ async def test_nebius_422_preserves_sanitized_validation_body_and_redacts_creden
     assert '"response_format"' in message
     assert secret not in message
     assert message.count("[REDACTED]") == 3
+
+
+def completion_client(envelope, *, status_code=200, api_key="synthetic"):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=envelope)
+
+    return NebiusTokenFactoryClient(NebiusConfig(
+        api_key=api_key,
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+
+
+async def test_normal_completion_retains_safe_metadata_and_exact_http_status(caplog):
+    client = completion_client({
+        "id": "completion-123", "object": "chat.completion", "model": "returned-model",
+        "choices": [{
+            "index": 0, "finish_reason": "stop",
+            "message": {"role": "assistant", "content": '{"ok": true}'},
+        }],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+    }, status_code=201)
+    assert await client.complete([{"role": "user", "content": "test"}]) == '{"ok": true}'
+    metadata = client.last_response_metadata
+    assert metadata.http_status == 201
+    assert metadata.response_id == "completion-123"
+    assert metadata.object_type == "chat.completion"
+    assert metadata.returned_model == "returned-model"
+    assert metadata.choice_count == 1
+    assert metadata.selected_choice_index == 0
+    assert metadata.finish_reason == "stop"
+    assert metadata.message_role == "assistant"
+    assert metadata.message_field_types == {"role": "str", "content": "str"}
+    assert metadata.content_type == "str"
+    assert metadata.content_length == 12
+    assert (metadata.prompt_tokens, metadata.completion_tokens, metadata.total_tokens) == (11, 7, 18)
+    assert '"http_status": 201' in caplog.text
+
+
+@pytest.mark.parametrize(("envelope", "classification"), [
+    ({}, "MISSING_CHOICES"),
+    ({"choices": []}, "EMPTY_CHOICES"),
+    ({"choices": [{}]}, "MISSING_MESSAGE"),
+    ({"choices": [{"finish_reason": "stop", "message": {"content": None}}]}, "CONTENT_NULL"),
+    ({"choices": [{"finish_reason": "stop", "message": {"content": ""}}]}, "CONTENT_EMPTY"),
+    ({"choices": [{"finish_reason": "stop", "message": {}}]}, "CONTENT_MISSING"),
+    ({"choices": [{"finish_reason": "stop", "message": {"content": []}}]}, "CONTENT_NON_STRING"),
+    ({"choices": [{"finish_reason": "stop", "message": {
+        "content": None, "refusal": "request refused",
+    }}]}, "REFUSAL_PRESENT"),
+    ({"choices": [{"finish_reason": "length", "message": {"content": None}}]},
+     "LENGTH_TERMINATED_WITHOUT_CONTENT"),
+    ({"choices": [{"finish_reason": "stop", "message": {
+        "content": None, "reasoning": "private reasoning",
+    }}]}, "REASONING_WITHOUT_CONTENT"),
+    ({"choices": [{"finish_reason": "stop", "message": {
+        "content": None, "reasoning_content": "private reasoning",
+    }}]}, "REASONING_WITHOUT_CONTENT"),
+    ({"choices": [{"finish_reason": "tool_calls", "message": {
+        "content": None, "tool_calls": [{"id": "call-1"}],
+    }}]}, "TOOL_CALLS_WITHOUT_CONTENT"),
+])
+async def test_completion_failure_classifications(envelope, classification):
+    client = completion_client(envelope)
+    with pytest.raises(NebiusCompletionError) as raised:
+        await client.complete([{"role": "user", "content": "test"}])
+    assert raised.value.classification == classification
+    assert raised.value.metadata.http_status == 200
+
+
+async def test_empty_completion_diagnostic_reports_types_not_generated_text_or_credentials(caplog):
+    secret = "synthetic-credential"
+    client = completion_client({
+        "id": secret,
+        "model": f"Bearer {secret}",
+        "choices": [{
+            "index": 2, "finish_reason": "stop",
+            "message": {
+                "role": "assistant", "content": None,
+                "refusal": secret, "reasoning_content": secret,
+                "tool_calls": [{"arguments": secret}],
+            },
+        }],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 0, "total_tokens": 3},
+    }, api_key=secret)
+    with pytest.raises(NebiusCompletionError) as raised:
+        await client.complete([{"role": "user", "content": "test"}])
+    diagnostic = str(raised.value)
+    metadata = raised.value.metadata
+    assert secret not in diagnostic
+    assert secret not in caplog.text
+    assert "private reasoning" not in diagnostic
+    assert metadata.refusal_present and metadata.refusal_type == "str"
+    assert metadata.reasoning_content_present and metadata.reasoning_content_type == "str"
+    assert metadata.tool_calls_present and metadata.tool_calls_count == 1
+    assert metadata.completion_tokens == 0
 
 
 def test_nemotron_super_requires_documented_regional_endpoint():
