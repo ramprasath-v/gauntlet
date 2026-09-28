@@ -24,8 +24,8 @@ were unavailable, so no live request was made or implied.
 
 The workflow preserves the M2 artifact chain, extracts a bounded and hashed
 authorized source span, and passes both through a provider interface. The real
-implementation targets Nebius Token Factory and
-`nvidia/nemotron-3-super-120b-a12b`; a deterministic fake exercises the full
+implementation targets Nebius Token Factory and M3.2 selects
+`nvidia/Nemotron-3_5-Lightning`; a deterministic fake exercises the full
 offline contract. Strict output validation requires a single-target unified
 diff, executable Python regression-test source, rationale, provider/model
 metadata, and unchanged trace/boundary/evidence provenance. M3.1 snapshots the

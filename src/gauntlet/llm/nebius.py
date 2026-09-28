@@ -19,6 +19,7 @@ ALLOWED_NEBIUS_HOSTS = {
 }
 NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_HOST = "api.tokenfactory.us-central1.nebius.com"
+NEMOTRON_LIGHTNING_MODEL = "nvidia/Nemotron-3_5-Lightning"
 REPAIR_SCHEMA_NAME = "repair_proposal"
 NEMOTRON_REASONING_ENABLED = "/think"
 NEMOTRON_REASONING_DISABLED = "/no_think"
@@ -264,6 +265,7 @@ class NebiusTokenFactoryClient:
         self, messages: Sequence[Mapping[str, str]], *,
         response_schema: dict[str, Any] | None = None,
         reasoning_directive: str | None = None,
+        chat_template_kwargs: Mapping[str, bool] | None = None,
         max_tokens: int | None = None,
     ) -> str:
         serialized_messages = [dict(message) for message in messages]
@@ -275,6 +277,18 @@ class NebiusTokenFactoryClient:
             serialized_messages = _with_nemotron_reasoning_directive(
                 serialized_messages, reasoning_directive
             )
+        serialized_chat_template_kwargs = (
+            dict(chat_template_kwargs) if chat_template_kwargs is not None else None
+        )
+        if serialized_chat_template_kwargs is not None:
+            if self.config.model != NEMOTRON_LIGHTNING_MODEL:
+                raise ValueError(
+                    "chat_template_kwargs reasoning control requires Nemotron-3.5-Lightning"
+                )
+            if serialized_chat_template_kwargs != {"enable_thinking": False}:
+                raise ValueError(
+                    "Nemotron-3.5-Lightning requires enable_thinking=false for remediation"
+                )
         if max_tokens is not None and (
             isinstance(max_tokens, bool) or not isinstance(max_tokens, int)
             or max_tokens <= 0
@@ -286,6 +300,8 @@ class NebiusTokenFactoryClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if serialized_chat_template_kwargs is not None:
+            payload["chat_template_kwargs"] = serialized_chat_template_kwargs
         if response_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",

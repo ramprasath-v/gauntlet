@@ -46,7 +46,8 @@ that exact text.
 `RemediationProvider` separates generation from orchestration. The production
 provider sends a defensive system contract and serialized M2 evidence/source
 context to Nebius Token Factory's OpenAI-compatible chat-completions endpoint,
-requesting JSON-schema output from `nvidia/nemotron-3-super-120b-a12b`. The
+requesting JSON-schema output from the configured model. M3.2 selects
+`nvidia/Nemotron-3_5-Lightning` for the next controlled smoke test. The
 transport requires explicit environment configuration, Bearer authentication,
 HTTPS, an approved Token Factory host, `/v1`, no redirects, and no environment
 proxy. Tests inject `httpx.MockTransport`; the offline fake supplies a complete

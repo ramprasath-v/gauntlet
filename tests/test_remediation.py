@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
+    NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_REASONING_DISABLED,
     NebiusAPIError, NebiusCompletionError, NebiusTokenFactoryClient,
 )
@@ -218,6 +219,90 @@ async def test_remediation_provider_serializes_no_think_and_bounded_output_witho
         "type": "json_schema",
         "json_schema": {"name": "repair_proposal", "schema": schema},
     }
+
+
+async def test_lightning_provider_disables_thinking_without_no_think_directive():
+    observed = {}
+    schema = RepairProposal.model_json_schema()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.update(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"ok": true}'}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.nebius.com/v1/",
+        model=NEMOTRON_LIGHTNING_MODEL,
+    ), transport=httpx.MockTransport(handler))
+    provider = NebiusNemotronRemediationProvider(client)
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    request = RemediationRequest(
+        source_context=context,
+        failure_type="indirect_prompt_injection",
+        provider=provider.provider_name,
+        model=provider.model_name,
+        evidence_summary={"verdict": trace.verdict},
+    )
+
+    await provider.generate(request)
+
+    assert observed["model"] == NEMOTRON_LIGHTNING_MODEL
+    assert observed["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
+    assert not observed["messages"][0]["content"].startswith("/no_think")
+    assert observed["chat_template_kwargs"] == {"enable_thinking": False}
+    assert observed["max_tokens"] == 4_096
+    assert observed["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "repair_proposal", "schema": schema},
+    }
+
+
+async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
+    observed = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.update(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"ok": true}'}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="Qwen/Qwen3.5-397B-A17B",
+    ), transport=httpx.MockTransport(handler))
+    provider = NebiusNemotronRemediationProvider(client)
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    request = RemediationRequest(
+        source_context=context,
+        failure_type="indirect_prompt_injection",
+        provider=provider.provider_name,
+        model=provider.model_name,
+        evidence_summary={"verdict": trace.verdict},
+    )
+
+    await provider.generate(request)
+
+    assert observed["messages"][0]["content"] == SYSTEM_PROMPT
+    assert "chat_template_kwargs" not in observed
+    assert "reasoning_effort" not in observed
+
+
+async def test_lightning_rejects_reasoning_enabled_for_remediation():
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.nebius.com/v1/",
+        model=NEMOTRON_LIGHTNING_MODEL,
+    ), transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
+    with pytest.raises(ValueError, match="enable_thinking=false"):
+        await client.complete(
+            [{"role": "user", "content": "test"}],
+            chat_template_kwargs={"enable_thinking": True},
+        )
 
 
 @pytest.mark.parametrize("directive", ["off", "none", "detailed thinking off", ""])

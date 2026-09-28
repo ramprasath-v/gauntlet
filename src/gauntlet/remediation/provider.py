@@ -1,7 +1,9 @@
 from typing import Protocol
 
 from gauntlet.llm.nebius import (
+    NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_REASONING_DISABLED,
+    NEMOTRON_SUPER_MODEL,
     NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.models import RemediationRequest, RepairProposal
@@ -24,9 +26,14 @@ class NebiusNemotronRemediationProvider:
         self.model_name = client.config.model or ""
 
     async def generate(self, request: RemediationRequest) -> str:
+        reasoning_options = {}
+        if self.model_name == NEMOTRON_SUPER_MODEL:
+            reasoning_options["reasoning_directive"] = NEMOTRON_REASONING_DISABLED
+        elif self.model_name == NEMOTRON_LIGHTNING_MODEL:
+            reasoning_options["chat_template_kwargs"] = {"enable_thinking": False}
         return await self.client.complete(
             build_messages(request),
             response_schema=RepairProposal.model_json_schema(),
-            reasoning_directive=NEMOTRON_REASONING_DISABLED,
             max_tokens=self.max_output_tokens,
+            **reasoning_options,
         )

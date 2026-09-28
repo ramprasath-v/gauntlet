@@ -574,3 +574,131 @@ report reasoning presence/type without recording reasoning text.
 Attempt #6 is justified as one controlled live smoke request after the complete
 offline suite passes. No attempt #6 was made here, no repair was applied, and
 M4.1/M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Sixth and Final Nemotron-3-Super Live-Provider Smoke Validation
+
+Result: `LIVE_PROVIDER_FAILED`; M3.1 live quality gate: FAIL.
+Model decision: `EVALUATE_ALTERNATE_MODEL`.
+
+Request facts:
+- endpoint: `https://api.tokenfactory.us-central1.nebius.com/v1/chat/completions`
+- configured and returned model: `nvidia/nemotron-3-super-120b-a12b`
+- request count: exactly 1; no retry
+- end-to-end latency: 21.75 seconds
+- reasoning directive: `/no_think` at the start of the system prompt
+- explicit output limit: `max_tokens=4096`
+- repository/victim Python source digest before and after: `6e9e3d56ca352e4f1296354ce42f68b0f5811a8384541aeebb6bc3ce096fdc46`; unchanged
+
+Sanitized completion metadata:
+- HTTP status: 200
+- response ID: `chatcmpl-9dda10fee30d3849`
+- returned model: `nvidia/nemotron-3-super-120b-a12b`
+- finish reason: `length`
+- prompt tokens: 1,647
+- completion tokens: 4,096
+- total tokens: 5,743
+- content type: `null`; content length: unavailable
+- reasoning: present, type `str`; text was not logged or used
+- reasoning_content: present, type `str`; text was not logged or used
+- refusal field: present, type `null`; this is not evidence of a refusal
+
+The structured-output request was accepted and the completion envelope parsed,
+but the model exhausted the explicit 4,096-token completion budget with
+`finish_reason=length` and no content in the sole accepted proposal channel.
+Based only on observable metadata, `/no_think` did not prevent the attempt #5
+failure mode: both runs ended at their completion limit with reasoning fields
+populated and `message.content=null`. Attempt #6 used fewer completion tokens
+because Gauntlet explicitly lowered the ceiling; it did not produce final
+content.
+
+No `RepairProposal` was constructed, so strict proposal validation and all
+provenance checks were not reached. Patch quality, patch applicability, and
+regression-test quality were not evaluated because no patch or test was
+returned. No JSON repair, heuristic extraction, fallback field, retry, or
+configuration change was used. No repair was applied, and M4.1/M5 were not
+started.
+
+This was the final controlled smoke attempt for the current model
+configuration. Because provider transport succeeded but structured final
+content failed again, this model does not pass the M3.1 quality gate and should
+not proceed to M4.1 under the stated decision rule. A future separately
+authorized task may evaluate an alternate model; none was selected or called
+here.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.2 — Offline Alternate-Model Selection
+
+Live request made during this work: No.
+
+Hackathon requirement: The official Nebius x NVIDIA Global AI Hackathon rules
+require a working application that runs on Nebius Token Factory or Nebius AI
+Cloud and uses at least one NVIDIA open-source model. NVIDIA is therefore a
+project requirement, not an optional bonus. The Coding and Agentic Engineering
+track specifically covers developer tools that write, run, and test code.
+
+Current official-source shortlist:
+
+1. `nvidia/Nemotron-3_5-Lightning` (NVIDIA Nemotron 3.5 Lightning). Nebius's
+   current Physical AI Token Factory documentation uses this exact ID as its
+   default text-generation model and the global Token Factory endpoint. NVIDIA
+   describes the 30B-total/3B-active model as a compact execution model with
+   strong coding quality and low latency. Its OpenAI-compatible API documents
+   `chat_template_kwargs: {"enable_thinking": false}` for concise output and
+   explicitly recommends disabling thinking for structured JSON. The current
+   Token Factory catalog lists a 1M context window, while NVIDIA's standalone
+   NIM guide documents a 262,144-token native context; either is far above this
+   workload's approximately 1.5K-token input. NVIDIA documents JSON mode; the stricter Nebius
+   `json_schema` envelope remains to be verified by one live smoke.
+
+2. `Qwen/Qwen3.5-397B-A17B` (Alibaba/Qwen). The Nebius cookbook documents the
+   exact Token Factory ID, 262K context, hybrid thinking, strong coding and
+   instruction-following performance, including HumanEval and LiveCodeBench.
+   Token Factory generally supports JSON-schema structured output, but the
+   model page does not state a model-specific schema guarantee or exact
+   non-thinking request control. It also does not satisfy the hackathon's NVIDIA
+   model requirement by itself and is larger than this workload needs.
+
+3. `MiniMaxAI/MiniMax-M3` (MiniMax). The Nebius cookbook documents the exact
+   Token Factory ID, 1M context, frontier coding/cowork performance, and a
+   `thinking` parameter with `enabled`, `adaptive`, and `disabled` modes. It is
+   a much larger multimodal model than this small text repair needs, and it does
+   not satisfy the NVIDIA requirement by itself. Model-specific JSON-schema
+   support is not stated on its cookbook page.
+
+Selected next model: `nvidia/Nemotron-3_5-Lightning`. It is the only shortlisted
+candidate that simultaneously meets the NVIDIA requirement, has documented
+coding strength, is optimized for fast specialized agent execution, and has an
+explicit documented non-thinking mode for structured JSON. This is a better fit
+than Nemotron 3 Super for Gauntlet's bounded repair artifact because it provides
+a request-level control that reserves the completion budget for visible JSON.
+Selection does not assert that Token Factory's strict schema path has already
+worked; that is the purpose of the next single controlled smoke test.
+
+Offline configuration and provider changes:
+- select the documented global endpoint `https://api.tokenfactory.nebius.com/v1/`
+  and `NEBIUS_MODEL=nvidia/Nemotron-3_5-Lightning`
+- retain `max_tokens=4096` and the complete named `repair_proposal` JSON schema
+- send `chat_template_kwargs={"enable_thinking": false}` only for Lightning
+- retain `/no_think` only for the retired Super model's historical adapter path
+- send no model-specific reasoning control for unrecognized or non-Nemotron models
+
+The `RepairProposal` schema, provenance checks, bounded source context, strict
+JSON parser, sanitized diagnostics, `message.content` channel, and patch
+authorization rules are unchanged. Attempts #1–#6 remain historical evidence
+about the prior model/configuration/workload, not failures of Nebius generally.
+
+Official sources:
+- https://nebiusglobalaihackathon.devpost.com/rules
+- https://github.com/nebius/nebius-physical-ai/blob/main/docs/workbench/token-factory.md
+- https://github.com/nebius/token-factory-cookbook/blob/main/models/nemotron/README.md
+- https://docs.nvidia.com/nim/large-language-models/2.0.10/get-started/advanced/get-started-nemotron-3.5-lightning.html
+- https://github.com/nebius/token-factory-cookbook/blob/main/models/qwen-3.5.md
+- https://github.com/nebius/token-factory-cookbook/blob/main/models/minimax-m3.md
+
+One alternate-model live smoke test is justified after offline verification.
+No live request, M4.1 work, or M5 work occurred during this investigation.
