@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 
@@ -14,7 +15,9 @@ from gauntlet.llm.nebius import (
 )
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
-from gauntlet.remediation.models import RemediationRequest, RepairProposal
+from gauntlet.remediation.models import (
+    RegressionTestSyntaxError, RemediationRequest, RepairProposal,
+)
 from gauntlet.remediation.parsing import RepairProposalJSONError, parse_repair_proposal
 from gauntlet.remediation.prompt import SYSTEM_PROMPT, build_messages
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
@@ -526,6 +529,10 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
         "Do not suppress the verifier", "remove the canary", "bypass the attack harness",
         "smallest reasonable repair", "actual Python regression test",
         "standards-compliant JSON", "never place a literal control character",
+        "complete, executable, pytest-compatible", "syntactically valid Python statement",
+        "Preserve all required newlines and indentation", "JSON-escape source newlines",
+        "do not compress multiple Python statements", "parse successfully with Python",
+        "Put no Markdown fences", "prose inside regression_test", "Formatting example only",
     ):
         assert phrase in SYSTEM_PROMPT
     payload = json.loads(messages[1]["content"])
@@ -551,6 +558,95 @@ async def test_nebius_content_extraction_preserves_inner_json_text_exactly():
     ), transport=httpx.MockTransport(handler))
     assert await client.complete([{"role": "user", "content": "test"}]) == correctly_escaped
     assert await client.complete([{"role": "user", "content": "test"}]) == literal_newline
+
+
+async def test_escaped_python_newlines_survive_response_extraction_and_one_json_decode():
+    provider_json = r'{"regression_test":"import asyncio\nfrom example import thing\n"}'
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": provider_json}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.nebius.com/v1/",
+        model=NEMOTRON_LIGHTNING_MODEL,
+    ), transport=httpx.MockTransport(handler))
+    extracted = await client.complete([{"role": "user", "content": "test"}])
+    source = json.loads(extracted)["regression_test"]
+
+    assert extracted == provider_json
+    assert source == "import asyncio\nfrom example import thing\n"
+    ast.parse(source)
+
+
+async def test_valid_multiline_pytest_source_passes_strict_proposal_validation():
+    trace = await attack_trace()
+    source = (
+        "import asyncio\n"
+        "from example import thing\n\n"
+        "def test_example():\n"
+        "    assert callable(thing)\n"
+    )
+    proposal = await generate_repair_proposal(
+        trace.model_dump_json(), ROOT,
+        MutatingProvider(replace={"regression_test": source}),
+    )
+    assert proposal.regression_test == source
+    ast.parse(proposal.regression_test)
+
+
+async def test_invalid_joined_import_is_rejected_with_safe_syntax_diagnostics():
+    trace = await attack_trace()
+    invalid = (
+        "import asyncio from foo import thing\n"
+        "def test_example():\n"
+        "    assert thing\n"
+    )
+    proposal = None
+    with pytest.raises(ValidationError) as raised:
+        proposal = await generate_repair_proposal(
+            trace.model_dump_json(), ROOT,
+            MutatingProvider(replace={"regression_test": invalid}),
+        )
+
+    detail = raised.value.errors(include_input=False)[0]
+    diagnostic = detail["ctx"]["error"]
+    assert isinstance(diagnostic, RegressionTestSyntaxError)
+    assert diagnostic.syntax_message
+    assert diagnostic.line == 1
+    assert diagnostic.offset is not None
+    assert diagnostic.source_length == len(invalid)
+    assert r"\n" in diagnostic.diagnostic_window
+    assert "\n" not in diagnostic.diagnostic_window
+    assert len(json.loads(diagnostic.diagnostic_window)) <= 97
+    assert invalid not in str(raised.value)
+    assert "input_value=" not in str(raised.value)
+    assert proposal is None
+
+
+def test_syntax_diagnostic_window_escapes_controls_and_redacts_credentials():
+    invalid = "API_KEY='top-secret'\n\timport asyncio from foo import thing\n"
+    with pytest.raises(ValidationError) as raised:
+        RepairProposal.model_validate({
+            "repair_id": "00000000-0000-0000-0000-000000000001",
+            "trace_id": "trace", "boundary_id": "boundary",
+            "evidence_ids": ["evidence"], "provider": "provider",
+            "model": "model", "target_path": "target.py",
+            "target_symbol": "target", "source_hash": "0" * 64,
+            "failure_type": "failure", "rationale": "rationale",
+            "patch": "--- a/target.py\n+++ b/target.py\n@@ -1 +1 @@\n-x\n+y\n",
+            "regression_test": invalid,
+        })
+    diagnostic = raised.value.errors(include_input=False)[0]["ctx"]["error"]
+    assert isinstance(diagnostic, RegressionTestSyntaxError)
+    assert r"\n" in diagnostic.diagnostic_window
+    assert r"\t" in diagnostic.diagnostic_window
+    assert "\n" not in diagnostic.diagnostic_window
+    assert "\t" not in diagnostic.diagnostic_window
+    assert "top-secret" not in str(diagnostic)
+    assert "[REDACTED]" in str(diagnostic)
 
 
 async def test_multiline_patch_and_regression_test_accept_only_json_escaped_newlines():

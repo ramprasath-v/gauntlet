@@ -1,4 +1,6 @@
 import ast
+import json
+import re
 from hashlib import sha256
 from typing import Any
 from uuid import UUID
@@ -7,7 +9,50 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+REGRESSION_DIAGNOSTIC_RADIUS = 48
+
+
+class RegressionTestSyntaxError(ValueError):
+    """Syntax failure metadata without exposing complete generated source."""
+
+    def __init__(self, source: str, error: SyntaxError):
+        self.syntax_message = error.msg
+        self.line = error.lineno
+        self.offset = error.offset
+        self.source_length = len(source)
+        position = _syntax_error_position(source, error)
+        start = max(0, position - REGRESSION_DIAGNOSTIC_RADIUS)
+        end = min(len(source), position + REGRESSION_DIAGNOSTIC_RADIUS + 1)
+        window = _redact_generated_source(source[start:end])
+        self.diagnostic_window = json.dumps(window, ensure_ascii=True)
+        super().__init__(
+            "regression_test must be valid Python source "
+            f"(message={json.dumps(error.msg)}, line={error.lineno}, "
+            f"offset={error.offset}, source_length={len(source)}, "
+            f"window={self.diagnostic_window})"
+        )
+
+
+def _syntax_error_position(source: str, error: SyntaxError) -> int:
+    line = max(error.lineno or 1, 1)
+    offset = max(error.offset or 1, 1)
+    lines = source.splitlines(keepends=True)
+    prefix_length = sum(len(value) for value in lines[:line - 1])
+    return min(len(source), prefix_length + offset - 1)
+
+
+def _redact_generated_source(value: str) -> str:
+    value = re.sub(
+        r"(?i)((?:api[_-]?key|authorization|access[_-]?token|password|secret)"
+        r"\s*=\s*['\"])[^'\"]*",
+        r"\1[REDACTED]", value,
+    )
+    return re.sub(
+        r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", value
+    )
 
 
 class SourceContext(StrictModel):
@@ -52,7 +97,7 @@ class RepairProposal(StrictModel):
         try:
             tree = ast.parse(value)
         except SyntaxError as exc:
-            raise ValueError("regression_test must be valid Python source") from exc
+            raise RegressionTestSyntaxError(value, exc) from exc
         tests = [node for node in tree.body
                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                  and node.name.startswith("test_")]

@@ -702,3 +702,118 @@ Official sources:
 
 One alternate-model live smoke test is justified after offline verification.
 No live request, M4.1 work, or M5 work occurred during this investigation.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.2 — First Nemotron-3.5-Lightning Live Quality Gate
+
+Result: `LIVE_PROVIDER_FAILED`; M3.2 Lightning quality gate: FAIL.
+M3 status: `NOT_READY_FOR_M4_1`.
+
+Request facts:
+- endpoint: `https://api.tokenfactory.nebius.com/v1/chat/completions`
+- configured model: `nvidia/Nemotron-3_5-Lightning`
+- request count: exactly 1; no retry
+- end-to-end latency: 5.21 seconds
+- reasoning configuration: `chat_template_kwargs={"enable_thinking": false}`
+- output limit: `max_tokens=4096`
+- structured output: complete named `repair_proposal` JSON schema
+- `/no_think` was not sent
+
+Sanitized completion metadata:
+- HTTP status: 200
+- response ID: `chatcmpl-59bb4ec8`
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- finish reason: `stop`
+- prompt tokens: 1,645
+- completion tokens: 731
+- total tokens: 2,376
+- content type: `str`; content length: 2,335 characters
+- reasoning field: present, type `null`
+- reasoning_content field: present, type `null`
+- refusal field: present, type `null`; this is not evidence of refusal
+
+The request succeeded and returned final text in `message.content`. Observable
+metadata shows that `enable_thinking=false` avoided the prior Super behavior:
+generation stopped normally after 731 completion tokens, both reasoning fields
+were null, and 2,335 characters of final content were present.
+
+The returned content was valid enough at the JSON level to enter strict
+`RepairProposal` model validation, but the proposal was rejected because its
+`regression_test` value was not syntactically valid Python. The sanitized
+Pydantic diagnostic was:
+
+```text
+regression_test
+  Value error, regression_test must be valid Python source
+  input_value="import asyncio from vict..._': asyncio.run(main())"
+```
+
+No malformed-JSON repair, heuristic extraction, reasoning/refusal fallback, or
+schema relaxation was attempted. Because strict validation failed, no
+`RepairProposal` was constructed. Provenance, patch authorization, security
+repair quality, and exact patch applicability were not evaluated. Regression
+test quality failed at the Python-syntax requirement. No optional policy
+artifact was available for review.
+
+Provider friction: Lightning and Token Factory accepted the strict structured
+request and produced concise final content without reasoning-token exhaustion,
+but JSON-schema conformance alone did not satisfy Gauntlet's semantic contract
+that `regression_test` be executable Python.
+
+Repository/victim Python source digest before and after was
+`19f515bfaff87bbab338e29576910e271cd5b1dad77e27a7bd1239f35f56a0f1`;
+repository immutability passed. No patch was applied. M4.1 and M5 were not
+started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.2 — Offline Lightning Regression-Test Contract Hardening
+
+No live provider request was made. The configured model remains
+`nvidia/Nemotron-3_5-Lightning`, with
+`chat_template_kwargs={"enable_thinking": false}`, `max_tokens=4096`, and the
+unchanged strict named `repair_proposal` JSON schema. The endpoint and
+provider-selection behavior were not changed.
+
+Response-path analysis established that Gauntlet decodes the outer HTTP JSON
+envelope once, selects `choices[0].message.content` without changing it, and
+passes that exact string to `RepairProposal.model_validate_json()`. That call
+performs the one required inner JSON decode. An offline transport test proves
+that JSON `\\n` escapes in `regression_test` become actual newline characters,
+remain in their original positions, and produce source accepted by
+`ast.parse()`. Gauntlet does not remove newlines, replace them with spaces, join
+lines, normalize indentation, or double-decode the field.
+
+The attempt #1 excerpt was reproduced offline as the invalid source form
+`import asyncio from foo import thing`. Python rejected it on line 1 with the
+message `Did you mean to use 'from ... import ...' instead?`. This establishes
+that the reproduced problem is invalid Python statement construction; it does
+not support a newline-loss hypothesis. The complete provider-returned source
+from attempt #1 was intentionally not retained, so the exact original parser
+offset cannot be recovered retrospectively.
+
+Strict validation still requires `ast.parse(regression_test)` and a pytest-style
+test function containing an assertion. Invalid source is not repaired or
+normalized and cannot construct a `RepairProposal`. Syntax failures now retain
+the parser message, line, offset, total source length, and a bounded escaped
+window around the failure. The window escapes control characters, redacts
+common credential forms, and the shared strict-model configuration prevents
+Pydantic from echoing the full input value in validation messages.
+
+Only the regression-test instructions in the remediation prompt were expanded.
+They now require complete executable pytest-compatible Python 3, valid import
+statements, preserved newlines and indentation, JSON-escaped newlines, an
+`ast.parse()`-valid result, and no Markdown or prose. A small formatting-only
+example illustrates multiline Python in a JSON string without P100, the canary,
+victim details, or repair logic.
+
+Attempt #1 is characterized as provider/transport success, reasoning-control
+success, concise-generation success, and JSON structured-output success. Strict
+proposal construction failed solely because the generated regression test was
+invalid Python. No patch-quality conclusion is possible because no proposal was
+constructed. The complete offline suite passed with 105 tests. `git diff` for
+the victim tree remained empty, confirming that victim source was unchanged.
+One Lightning live attempt #2 is justified.
