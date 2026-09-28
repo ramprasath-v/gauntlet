@@ -1,6 +1,7 @@
 import ast
 import json
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
@@ -16,9 +17,12 @@ from gauntlet.llm.nebius import (
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import (
-    RegressionTestSyntaxError, RemediationRequest, RepairProposal,
+    GeneratedRepair, RegressionTestSyntaxError, RemediationRequest,
+    RepairContext, RepairProposal,
 )
-from gauntlet.remediation.parsing import RepairProposalJSONError, parse_repair_proposal
+from gauntlet.remediation.parsing import (
+    GeneratedRepairJSONError, parse_generated_repair,
+)
 from gauntlet.remediation.prompt import SYSTEM_PROMPT, build_messages
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
 from gauntlet.remediation.workflow import generate_repair_proposal
@@ -33,6 +37,24 @@ async def attack_trace():
         transport=httpx.ASGITransport(app=create_app()), base_url="http://before"
     ) as client:
         return (await IndirectPromptInjectionAttack(client).run()).trace
+
+
+def remediation_request(trace, context, provider):
+    return RemediationRequest(
+        source_context=context,
+        repair_context=RepairContext(
+            trace_id=context.trace_id,
+            boundary_id=context.boundary_id,
+            evidence_ids=context.evidence_ids,
+            provider=provider.provider_name,
+            model=provider.model_name,
+            target_path=context.repository_relative_path,
+            target_symbol=context.target_symbol,
+            source_hash=context.source_hash,
+            failure_type="indirect_prompt_injection",
+        ),
+        evidence_summary={"verdict": trace.verdict},
+    )
 
 
 async def test_valid_trace_builds_bounded_source_context_with_provenance_and_hash():
@@ -68,6 +90,21 @@ async def test_source_location_must_match_boundary_evidence():
         build_source_context(json.dumps(serialized), ROOT)
 
 
+def test_generated_repair_schema_contains_only_model_owned_content():
+    schema = GeneratedRepair.model_json_schema()
+    generated_fields = {
+        "rationale", "patch", "regression_test", "optional_policy_artifact",
+    }
+    trusted_fields = {
+        "repair_id", "trace_id", "boundary_id", "evidence_ids", "provider",
+        "model", "target_path", "target_symbol", "source_hash", "failure_type",
+    }
+    assert set(schema["properties"]) == generated_fields
+    assert set(schema["required"]) == generated_fields - {"optional_policy_artifact"}
+    assert schema["additionalProperties"] is False
+    assert trusted_fields.isdisjoint(schema["properties"])
+
+
 async def test_fake_provider_exercises_complete_m31_flow_without_source_changes():
     trace = await attack_trace()
     target = ROOT / "victims/customer_support/agent.py"
@@ -81,6 +118,13 @@ async def test_fake_provider_exercises_complete_m31_flow_without_source_changes(
     assert proposal.evidence_ids == trace.failure_boundary.evidence_event_ids
     assert proposal.provider == "fake_remediation_provider"
     assert proposal.model == "deterministic-repair-fixture-v1"
+    assert UUID(proposal.repair_id)
+    assert proposal.target_path == "victims/customer_support/agent.py"
+    assert proposal.target_symbol == "CustomerSupportAgent.chat"
+    assert proposal.source_hash == build_source_context(
+        trace.model_dump_json(), ROOT
+    ).source_hash
+    assert proposal.failure_type == "indirect_prompt_injection"
     assert proposal.patch.startswith("--- a/victims/customer_support/agent.py")
     assert "async def test_poisoned_review_does_not_leak_canary" in proposal.regression_test
 
@@ -110,17 +154,19 @@ async def test_missing_patch_or_generated_regression_test_is_rejected(field):
 @pytest.mark.parametrize("raw", ["not-json", "{}", '{"patch": 7}'])
 def test_malformed_provider_output_is_rejected_by_strict_schema(raw):
     with pytest.raises((ValidationError, ValueError)):
-        RepairProposal.model_validate_json(raw)
+        GeneratedRepair.model_validate_json(raw)
 
 
-async def test_provider_cannot_change_provenance_or_metadata():
+async def test_model_cannot_supply_or_override_trusted_provenance():
     trace = await attack_trace()
     for field, value in (
         ("trace_id", "different"), ("boundary_id", "different"),
         ("evidence_ids", ["different"]), ("provider", "other"),
         ("model", "other"), ("source_hash", "0" * 64),
+        ("repair_id", "not-a-uuid"), ("target_path", "other.py"),
+        ("target_symbol", "other"), ("failure_type", "other"),
     ):
-        with pytest.raises(ValueError, match="changed required provenance"):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             await generate_repair_proposal(
                 trace.model_dump_json(), ROOT,
                 MutatingProvider(replace={field: value}),
@@ -143,7 +189,7 @@ async def test_invalid_patch_target_and_non_executable_test_are_rejected():
 
 async def test_nebius_transport_uses_documented_chat_schema_contract():
     observed = {}
-    schema = RepairProposal.model_json_schema()
+    schema = GeneratedRepair.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         observed["url"] = str(request.url)
@@ -188,7 +234,7 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
 
 async def test_remediation_provider_serializes_no_think_and_bounded_output_without_schema_change():
     observed = {}
-    schema = RepairProposal.model_json_schema()
+    schema = GeneratedRepair.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         observed.update(json.loads(request.content))
@@ -204,13 +250,7 @@ async def test_remediation_provider_serializes_no_think_and_bounded_output_witho
     provider = NebiusNemotronRemediationProvider(client)
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
-    request = RemediationRequest(
-        source_context=context,
-        failure_type="indirect_prompt_injection",
-        provider=provider.provider_name,
-        model=provider.model_name,
-        evidence_summary={"verdict": trace.verdict},
-    )
+    request = remediation_request(trace, context, provider)
 
     await provider.generate(request)
 
@@ -226,7 +266,7 @@ async def test_remediation_provider_serializes_no_think_and_bounded_output_witho
 
 async def test_lightning_provider_disables_thinking_without_no_think_directive():
     observed = {}
-    schema = RepairProposal.model_json_schema()
+    schema = GeneratedRepair.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         observed.update(json.loads(request.content))
@@ -242,13 +282,7 @@ async def test_lightning_provider_disables_thinking_without_no_think_directive()
     provider = NebiusNemotronRemediationProvider(client)
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
-    request = RemediationRequest(
-        source_context=context,
-        failure_type="indirect_prompt_injection",
-        provider=provider.provider_name,
-        model=provider.model_name,
-        evidence_summary={"verdict": trace.verdict},
-    )
+    request = remediation_request(trace, context, provider)
 
     await provider.generate(request)
 
@@ -280,13 +314,7 @@ async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
     provider = NebiusNemotronRemediationProvider(client)
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
-    request = RemediationRequest(
-        source_context=context,
-        failure_type="indirect_prompt_injection",
-        provider=provider.provider_name,
-        model=provider.model_name,
-        evidence_summary={"verdict": trace.verdict},
-    )
+    request = remediation_request(trace, context, provider)
 
     await provider.generate(request)
 
@@ -331,7 +359,7 @@ async def test_nebius_rejects_undocumented_reasoning_directives(directive):
 
 
 async def test_nebius_serializer_wraps_schema_rejected_by_previous_live_attempt():
-    schema = RepairProposal.model_json_schema()
+    schema = GeneratedRepair.model_json_schema()
     malformed_previous_envelope = {
         "type": "json_schema",
         "json_schema": schema,
@@ -516,28 +544,27 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
-    request = RemediationRequest(
-        source_context=context, failure_type="indirect_prompt_injection",
-        provider=provider.provider_name, model=provider.model_name,
-        evidence_summary={"verdict": trace.verdict},
-    )
+    request = remediation_request(trace, context, provider)
     messages = build_messages(request)
     for phrase in (
         "authorized defensive benchmark", "synthetic local victim",
         "only the supplied execution evidence", "Modify only the authorized target",
         "Preserve legitimate behavior", "Do not remove or weaken tests",
-        "Do not suppress the verifier", "remove the canary", "bypass the attack harness",
+        "Do not suppress the verifier", "remove the canary", "bypass or modify the attack harness",
         "smallest reasonable repair", "actual Python regression test",
         "standards-compliant JSON", "never place a literal control character",
         "complete, executable, pytest-compatible", "syntactically valid Python statement",
         "Preserve all required newlines and indentation", "JSON-escape source newlines",
         "do not compress multiple Python statements", "parse successfully with Python",
         "Put no Markdown fences", "prose inside regression_test", "Formatting example only",
+        "remediation CONTENT, not trusted provenance", "Do not hard-code P100",
+        "Do not disable all tool data", "deterministic test-double switch",
     ):
         assert phrase in SYSTEM_PROMPT
     payload = json.loads(messages[1]["content"])
     assert payload["source_context"]["source_text"] == context.source_text
     assert payload["source_context"]["evidence_ids"] == context.evidence_ids
+    assert payload["repair_context"]["target_path"] == context.repository_relative_path
     assert payload["required_output_schema"]["additionalProperties"] is False
 
 
@@ -653,14 +680,10 @@ async def test_multiline_patch_and_regression_test_accept_only_json_escaped_newl
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
-    request = RemediationRequest(
-        source_context=context, failure_type="indirect_prompt_injection",
-        provider=provider.provider_name, model=provider.model_name,
-        evidence_summary={"verdict": trace.verdict},
-    )
+    request = remediation_request(trace, context, provider)
     raw = await provider.generate(request)
     assert r"\n" in raw
-    proposal = parse_repair_proposal(raw)
+    proposal = parse_generated_repair(raw)
     assert "\n" in proposal.patch
     assert "\n" in proposal.regression_test
     assert proposal.patch.startswith("--- a/")
@@ -669,8 +692,8 @@ async def test_multiline_patch_and_regression_test_accept_only_json_escaped_newl
 
 def test_literal_control_character_is_rejected_with_escaped_bounded_diagnostic():
     raw = '{"patch":"line one\nline two","authorization":"Bearer top-secret"}'
-    with pytest.raises(RepairProposalJSONError) as raised:
-        parse_repair_proposal(raw)
+    with pytest.raises(GeneratedRepairJSONError) as raised:
+        parse_generated_repair(raw)
     error = raised.value
     assert error.code_point == "U+000A"
     assert error.line == 1
@@ -682,10 +705,10 @@ def test_literal_control_character_is_rejected_with_escaped_bounded_diagnostic()
     assert "[REDACTED]" in str(error)
 
 
-def test_malformed_provider_output_never_creates_repair_proposal():
+def test_malformed_provider_output_never_creates_generated_repair():
     malformed = '{"patch":"literal\ttab"}'
     proposal = None
-    with pytest.raises(RepairProposalJSONError) as raised:
-        proposal = parse_repair_proposal(malformed)
+    with pytest.raises(GeneratedRepairJSONError) as raised:
+        proposal = parse_generated_repair(malformed)
     assert raised.value.code_point == "U+0009"
     assert proposal is None

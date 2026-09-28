@@ -26,16 +26,31 @@ The workflow preserves the M2 artifact chain, extracts a bounded and hashed
 authorized source span, and passes both through a provider interface. The real
 implementation targets Nebius Token Factory and M3.2 selects
 `nvidia/Nemotron-3_5-Lightning`; a deterministic fake exercises the full
-offline contract. Strict output validation requires a single-target unified
-diff, executable Python regression-test source, rationale, provider/model
-metadata, and unchanged trace/boundary/evidence provenance. M3.1 snapshots the
-target and verifies that proposal generation did not modify it.
+offline contract. Strict generated-content validation requires a single-target
+unified diff, executable Python regression-test source, and rationale. M3.1
+snapshots the target and verifies that proposal generation did not modify it.
 
 Exit: a schema-valid, reviewable `RepairProposal` whose offline fixture diff is
 machine-applicable, without applying it or claiming `PATCH VERIFIED`.
 
 The earlier deterministic apply/re-attack workflow remains explicitly named
 `legacy_prove_test_double` for compatibility. It is not M3.1.
+
+## M3.3 — Trusted Provenance Assembly
+
+Status: IN PROGRESS; live quality success has not yet been established.
+
+Gauntlet now creates a trusted `RepairContext` from the deterministic trace,
+bounded source context, and configured provider. Lightning returns only a
+strict `GeneratedRepair` containing rationale, patch, regression test, and an
+optional policy artifact. Gauntlet generates the repair UUID and combines the
+two only after generated-content validation. Authoritative provenance no
+longer originates from an untrusted model and cannot be overridden by it.
+
+This architectural correction does not accept or repair malformed model
+output. Artifact quality remains subject to the same strict validators and a
+future live quality gate. `RepairProposal` remains a proposal with trusted
+provenance, not an applied or verified patch.
 
 ## M4 — Sandbox Repair Loop
 

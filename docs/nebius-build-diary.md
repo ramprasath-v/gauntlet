@@ -817,3 +817,139 @@ invalid Python. No patch-quality conclusion is possible because no proposal was
 constructed. The complete offline suite passed with 105 tests. `git diff` for
 the victim tree remained empty, confirming that victim source was unchanged.
 One Lightning live attempt #2 is justified.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.2 — Second Nemotron-3.5-Lightning Live Quality Gate
+
+Result: `LIVE_PROVIDER_FAILED`; M3.2 Lightning quality gate: FAIL.
+M3 status: `NOT_READY_FOR_M4_1`. Model decision: `REEVALUATE`.
+
+Pre-transport verification passed:
+- endpoint: `https://api.tokenfactory.nebius.com/v1/chat/completions`
+- configured model: `nvidia/Nemotron-3_5-Lightning`
+- reasoning configuration: `chat_template_kwargs={"enable_thinking": false}`
+- output limit: `max_tokens=4096`
+- response format: `json_schema`
+- schema name: `repair_proposal`
+- schema: the complete strict `RepairProposal` schema, including required
+  `regression_test` and `additionalProperties=false`
+- `/no_think` was not sent
+
+Exactly one live inference request was made and no retry occurred. Sanitized
+completion metadata:
+- HTTP status: 200
+- response ID: `chatcmpl-5b29b892`
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- finish reason: `stop`
+- end-to-end latency: 3.149 seconds
+- prompt tokens: 1,772
+- completion tokens: 690
+- total tokens: 2,462
+- content type: `str`; content length: 2,147 characters
+- reasoning field: present, type `null`
+- reasoning_content field: present, type `null`
+- refusal field: present, type `null`; this is not evidence of refusal
+- tool_calls field: present, type `null`
+
+The completion supplied usable text through `message.content`, which remained
+the only proposal channel. The content passed JSON decoding and reached strict
+`RepairProposal` validation. Proposal construction then failed with two
+validation errors:
+
+```text
+repair_id
+  Value error, badly formed hexadecimal UUID string
+regression_test
+  Value error, regression_test must contain a test function with an assertion
+```
+
+The regression source reached the post-`ast.parse()` semantic validator, so
+Python syntax validation succeeded. It did not satisfy the existing requirement
+for a `test_*` function containing an assertion. No JSON or Python repair,
+heuristic extraction, fallback field, or retry was used.
+
+Because strict proposal construction failed, provenance comparison, patch
+authorization, security-repair quality, exact patch applicability, semantic
+regression-test quality, and the optional policy artifact were not evaluated.
+No patch or regression test was applied or executed.
+
+The victim-source digest before and after was
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`;
+repository immutability passed. Provider transport, reasoning control, concise
+generation, and JSON decoding succeeded, but Lightning failed the strict
+proposal contract on both its final planned attempts. M3 is not ready for M4.1,
+and model/configuration strategy must be reevaluated before any further live
+request. M4.1 and M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.3 — Trusted Repair Provenance Assembly
+
+Result: offline architecture correction complete; 106 tests passed. No live
+Nebius request was made. M3 remains in progress and is not yet ready for M4.1.
+
+Evidence motivating the correction: Lightning attempt #2 reached Nebius with
+HTTP 200, `enable_thinking=false`, `finish_reason=stop`, concise structured JSON,
+and substantially lower latency than Nemotron 3 Super. Its content nevertheless
+included a malformed value for the authoritative `repair_id` field. That field
+was state Gauntlet already owned and should never have been delegated to an
+untrusted generative model.
+
+Before M3.3, the provider response schema was the complete `RepairProposal` and
+asked the model to reproduce the repair UUID, trace/boundary/evidence IDs,
+provider/model identity, authorized path and symbol, source hash, and failure
+type alongside the creative remediation artifacts. The workflow then compared
+the echoed values with local state.
+
+After M3.3, Gauntlet constructs a strict `RepairContext` from the deterministic
+trace, bounded `SourceContext`, and configured provider. The provider response
+schema is now the strict `GeneratedRepair` schema containing only:
+
+- `rationale`
+- `patch`
+- `regression_test`
+- `optional_policy_artifact`
+
+`additionalProperties=false` prevents generated output from supplying or
+overriding authoritative fields. The patch must still be a structurally valid
+single-target unified diff. The regression test must still be non-empty, parse
+with `ast.parse()`, contain a `test_*` function, and contain an assertion. No
+malformed JSON, Python, patch, or missing assertion is repaired, rewritten, or
+heuristically extracted.
+
+Only after `GeneratedRepair` validates does Gauntlet generate `repair_id` with
+`uuid4()` and assemble the final `RepairProposal` using trusted values for:
+
+- trace ID, boundary ID, and evidence IDs
+- provider and model identity
+- authorized target path and symbol
+- source hash
+- failure type
+
+This is not a workaround for accepting invalid AI output. It is a security
+architecture correction: authoritative provenance originates from the
+deterministic harness, while the model proposes remediation content. Gauntlet
+owns identity, provenance, authorization, source integrity, validation,
+application, and verification. A generated patch is not trusted merely because
+generation succeeded. `RepairProposal` means a validated proposal assembled
+with trusted provenance. **Repair proposed != Patch applied != Patch verified.**
+
+The selected generation model remains `nvidia/Nemotron-3_5-Lightning`, with
+`chat_template_kwargs={"enable_thinking": false}`, `max_tokens=4096`, and strict
+JSON-schema output. Lightning remains selected because it demonstrated
+provider success, effective thinking control, normal-stop concise completion,
+structured JSON, and lower latency. Nemotron 3 Super remains an evaluated model
+whose reasoning/output-budget behavior was unsuitable for this workload.
+Artifact quality remains subject to Gauntlet validation.
+
+Offline verification covers the exact content-only schema, absence of every
+trusted field from the provider schema, deterministic valid UUID creation,
+trusted provenance/target/source/provider assembly, rejection of attempted
+metadata overrides, strict diff and Python-test validation, and the unchanged
+M1/M2 behavior. Full suite: 106 passed, 0 failed. Victim digest before and after:
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`.
+The victim tree has no diff. One final controlled Lightning live validation of
+the corrected content-only contract is justified. M4.1 and M5 were not started.

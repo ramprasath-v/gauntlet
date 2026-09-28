@@ -61,17 +61,21 @@ CustomerSupportAgent.chat
 
 The M3.1 `propose-repair` command consumes a serialized M2 `AttackTrace` and
 `FailureBoundary`, reads only the authorized `CustomerSupportAgent.chat`
-source span, and asks a provider abstraction for a strict `RepairProposal`.
+source span, builds a trusted `RepairContext`, and asks a provider abstraction
+for strict remediation content as `GeneratedRepair`.
 The default command uses an offline deterministic provider substitute so the
 complete contract can be tested without credentials. The separate
 `nebius-repair-smoke` command uses Nebius Token Factory with the configured
 NVIDIA Nemotron model. M3.1 does not apply the proposal or emit a proof verdict.
 
-Each proposal includes the exact trace, boundary, and evidence IDs; provider
-and model metadata; source hash; authorized target; rationale; a single-target
-unified diff; actual Python regression-test source; and an optional policy
-artifact. Provider JSON with missing, extra, malformed, or changed provenance
-fields is rejected. The offline proposal's diff passes `git apply --check`,
+The model generates only rationale, a single-target unified diff, executable
+Python regression-test source, and an optional policy artifact. Gauntlet owns
+the repair UUID, trace/boundary/evidence IDs, provider/model identity, source
+hash, authorized target, failure type, validation, application, and
+verification. After `GeneratedRepair` passes strict validation, Gauntlet
+deterministically assembles the final `RepairProposal` from that content and
+the trusted context. Extra model fields are rejected, so the model cannot
+override provenance. The offline proposal's diff passes `git apply --check`,
 while the source file remains byte-for-byte unchanged.
 
 Exit codes: 0 = exploit confirmed, 1 = canary not observed, 2 = invalid arguments/execution failure. Absence of the canary alone is not a safety proof. Structured events are returned by `/chat` and included in `AttackResult`. M2 adds an evidence-backed attack path, supporting event IDs, trust-boundary evidence, and the actionable source symbol. These are observations, not hidden model reasoning.
@@ -85,8 +89,10 @@ The CLI accepts only loopback HTTP origins, disables environment proxies and red
 M3.1's generated repair is constrained to the synthetic victim's
 `CustomerSupportAgent.chat` seam. Absolute paths, traversal, locations outside
 the repository, and locations that do not match M2 boundary evidence are
-rejected. The default app remains vulnerable so the frozen M1/M2 baseline can
-be reproduced. **Repair proposed != Patch applied != Patch verified.**
+rejected. A generated patch is still untrusted until later authorization,
+application, and verification stages succeed. The default app remains
+vulnerable so the frozen M1/M2 baseline can be reproduced. **Repair proposed
+!= Patch applied != Patch verified.**
 
 The former deterministic M3 proof remains only as the `legacy-prove` command
 and `legacy_prove_test_double` compatibility path for frozen tests. It is not

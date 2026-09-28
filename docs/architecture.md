@@ -8,7 +8,7 @@ The eventual loop is ATTACK → TRACE → PATCH → BUILD → RE-ATTACK → PROV
 - `attacks`: async attack protocol and one indirect-injection attack using httpx.
 - `verification`: exact case-sensitive canary substring detection against response text only, with no model judgment.
 - `tracing`: structured user-message, tool-call, tool-result, model-response and verdict events. M2 adds linked context-flow evidence and actionable source locations; it does not infer hidden reasoning.
-- `remediation`: derives bounded source context from M2 evidence, builds the defensive prompt, invokes a replaceable provider, and strictly validates `RepairProposal` provenance and content without applying it.
+- `remediation`: derives bounded source context and trusted repair provenance from M2 evidence, asks a replaceable provider only for `GeneratedRepair` content, validates it, and deterministically assembles a `RepairProposal` without applying it.
 - `patching`: retains the earlier deterministic plan and proof only as a legacy/test-double compatibility path.
 - `sandbox`: copies an allowlisted project subset to a temporary directory, applies the M3 plan there, runs fixed build/test commands, captures structured results, bounds retries, checks the original digest, and cleans up.
 - `cli`: invokes the loopback demo, prints evidence and a concrete verdict.
@@ -47,18 +47,32 @@ that exact text.
 provider sends a defensive system contract and serialized M2 evidence/source
 context to Nebius Token Factory's OpenAI-compatible chat-completions endpoint,
 requesting JSON-schema output from the configured model. M3.2 selects
-`nvidia/Nemotron-3_5-Lightning` for the next controlled smoke test. The
-transport requires explicit environment configuration, Bearer authentication,
+`nvidia/Nemotron-3_5-Lightning` as the current repair-generation model. It
+demonstrated HTTP/provider success, disabled thinking, normal-stop concise
+completion, structured JSON, and much lower latency. Nemotron 3 Super remains
+an evaluated model whose reasoning/output-budget behavior was unsuitable for
+this structured repair workload. The transport requires explicit environment
+configuration, Bearer authentication,
 HTTPS, an approved Token Factory host, `/v1`, no redirects, and no environment
-proxy. Tests inject `httpx.MockTransport`; the offline fake supplies a complete
-proposal without network access.
+proxy. Tests inject `httpx.MockTransport`; the offline fake supplies generated
+content without network access.
 
-`RepairProposal` forbids extra fields and requires a new UUID, preserved
-trace/boundary/evidence IDs, provider/model metadata, target and source hash,
-rationale, one unified diff for the authorized target, syntactically valid
-Python test source containing a test assertion, and an optional policy artifact.
-The workflow rejects provider attempts to rewrite provenance and confirms that
-the authorized source bytes are unchanged after generation.
+M3.3 restores the trust boundary between deterministic state and generated
+content. `RepairContext` contains the trace/boundary/evidence IDs,
+provider/model identity, authorized path and symbol, source hash, and failure
+type. The provider schema is the smaller `GeneratedRepair`: rationale, patch,
+regression test, and optional policy artifact only. Extra fields are forbidden.
+After strict JSON, diff, and Python-test validation, Gauntlet generates the
+repair UUID and assembles `RepairProposal` from `RepairContext` plus
+`GeneratedRepair`. The model cannot redefine authoritative metadata.
+
+This is a security architecture correction, not a workaround for invalid AI
+output. The model proposes remediation content. Gauntlet owns identity,
+provenance, authorization, source integrity, validation, application, and
+verification. `RepairProposal` means a validated proposal assembled with
+trusted provenance; it does not mean the patch was applied or verified. Model
+artifact quality remains subject to Gauntlet validation, and the workflow
+confirms that authorized source bytes are unchanged after generation.
 
 M3.1 returns only the proposal. **Repair proposed != Patch applied != Patch
 verified.** The legacy deterministic apply/re-attack code is explicitly marked

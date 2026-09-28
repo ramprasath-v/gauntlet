@@ -6,7 +6,7 @@ from gauntlet.llm.nebius import (
     NEMOTRON_SUPER_MODEL,
     NebiusTokenFactoryClient,
 )
-from gauntlet.remediation.models import RemediationRequest, RepairProposal
+from gauntlet.remediation.models import GeneratedRepair, RemediationRequest
 from gauntlet.remediation.prompt import build_messages
 
 
@@ -33,7 +33,7 @@ class NebiusNemotronRemediationProvider:
             reasoning_options["chat_template_kwargs"] = {"enable_thinking": False}
         return await self.client.complete(
             build_messages(request),
-            response_schema=RepairProposal.model_json_schema(),
+            response_schema=GeneratedRepair.model_json_schema(),
             max_tokens=self.max_output_tokens,
             **reasoning_options,
         )

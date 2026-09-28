@@ -1,16 +1,16 @@
-"""Strict RepairProposal parsing with bounded, escaped failure diagnostics."""
+"""Strict GeneratedRepair parsing with bounded, escaped failure diagnostics."""
 import json
 import re
 
 from pydantic import ValidationError
 
-from gauntlet.remediation.models import RepairProposal
+from gauntlet.remediation.models import GeneratedRepair
 
 
 DIAGNOSTIC_RADIUS = 48
 
 
-class RepairProposalJSONError(ValueError):
+class GeneratedRepairJSONError(ValueError):
     def __init__(
         self, *, content_length: int, line: int, column: int,
         code_point: str, diagnostic_window: str,
@@ -21,7 +21,7 @@ class RepairProposalJSONError(ValueError):
         self.code_point = code_point
         self.diagnostic_window = diagnostic_window
         super().__init__(
-            "Provider output is not valid RepairProposal JSON "
+            "Provider output is not valid GeneratedRepair JSON "
             f"(length={content_length}, line={line}, column={column}, "
             f"code_point={code_point}, window={diagnostic_window})"
         )
@@ -37,22 +37,22 @@ def _redact_diagnostic(value: str) -> str:
     )
 
 
-def _json_failure(raw: str, error: json.JSONDecodeError) -> RepairProposalJSONError:
+def _json_failure(raw: str, error: json.JSONDecodeError) -> GeneratedRepairJSONError:
     start = max(0, error.pos - DIAGNOSTIC_RADIUS)
     end = min(len(raw), error.pos + DIAGNOSTIC_RADIUS + 1)
     window = _redact_diagnostic(raw[start:end])
     escaped_window = json.dumps(window, ensure_ascii=True)
     code_point = f"U+{ord(raw[error.pos]):04X}" if error.pos < len(raw) else "EOF"
-    return RepairProposalJSONError(
+    return GeneratedRepairJSONError(
         content_length=len(raw), line=error.lineno, column=error.colno,
         code_point=code_point, diagnostic_window=escaped_window,
     )
 
 
-def parse_repair_proposal(raw: str) -> RepairProposal:
+def parse_generated_repair(raw: str) -> GeneratedRepair:
     """Parse without repairing malformed provider output."""
     try:
-        return RepairProposal.model_validate_json(raw)
+        return GeneratedRepair.model_validate_json(raw)
     except ValidationError as validation_error:
         try:
             json.loads(raw)

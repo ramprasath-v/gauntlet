@@ -69,8 +69,7 @@ class SourceContext(StrictModel):
         return sha256(text.encode()).hexdigest()
 
 
-class RepairProposal(StrictModel):
-    repair_id: str
+class RepairContext(StrictModel):
     trace_id: str
     boundary_id: str
     evidence_ids: list[str] = Field(min_length=1)
@@ -80,16 +79,13 @@ class RepairProposal(StrictModel):
     target_symbol: str
     source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     failure_type: str = Field(min_length=1)
+
+
+class GeneratedRepair(StrictModel):
     rationale: str = Field(min_length=1)
     patch: str = Field(min_length=1)
     regression_test: str = Field(min_length=1)
     optional_policy_artifact: str | None = None
-
-    @field_validator("repair_id")
-    @classmethod
-    def valid_repair_id(cls, value: str) -> str:
-        UUID(value)
-        return value
 
     @field_validator("regression_test")
     @classmethod
@@ -107,19 +103,46 @@ class RepairProposal(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def machine_applicable_single_target_patch(self) -> "RepairProposal":
+    def structurally_valid_single_target_patch(self) -> "GeneratedRepair":
+        headers = [line for line in self.patch.splitlines()
+                   if line.startswith("--- ") or line.startswith("+++ ")]
+        if (len(headers) != 2 or not headers[0].startswith("--- a/")
+                or not headers[1].startswith("+++ b/")
+                or headers[0][6:] != headers[1][6:] or "@@" not in self.patch):
+            raise ValueError("patch must be a structurally valid single-target unified diff")
+        return self
+
+
+class RepairProposal(GeneratedRepair):
+    repair_id: str
+    trace_id: str
+    boundary_id: str
+    evidence_ids: list[str] = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    target_path: str
+    target_symbol: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    failure_type: str = Field(min_length=1)
+
+    @field_validator("repair_id")
+    @classmethod
+    def valid_repair_id(cls, value: str) -> str:
+        UUID(value)
+        return value
+
+    @model_validator(mode="after")
+    def authorized_single_target_patch(self) -> "RepairProposal":
         expected_old = f"--- a/{self.target_path}"
         expected_new = f"+++ b/{self.target_path}"
         headers = [line for line in self.patch.splitlines()
                    if line.startswith("--- ") or line.startswith("+++ ")]
-        if headers != [expected_old, expected_new] or "@@" not in self.patch:
+        if headers != [expected_old, expected_new]:
             raise ValueError("patch must be a single-target unified diff for target_path")
         return self
 
 
 class RemediationRequest(StrictModel):
     source_context: SourceContext
-    failure_type: str
-    provider: str
-    model: str
+    repair_context: RepairContext
     evidence_summary: dict[str, Any]
