@@ -76,9 +76,8 @@ proof move to M4.1.
 
 ## M4 — Sandbox Repair Loop
 
-Status: READY FOR SECOND LIVE OBSERVATION. M4.1 is frozen; M4.2 and the M4.2.1
-observability extension are COMPLETE OFFLINE. Full repository suite: 137
-passed, 0 failed.
+Status: READY FOR FINAL LIVE. M4.1, M4.2, M4.2.1, and the clean repair
+benchmark are COMPLETE OFFLINE. Full repository suite: 146 passed, 0 failed.
 
 M4.1 executes exactly one existing validated `RepairProposal` in a fresh
 disposable allowlisted workspace. It verifies the M3 source-symbol hash, applies
@@ -111,7 +110,26 @@ sound. M4.2.1 therefore retains each future decoded candidate exactly in a
 separate versioned, integrity-checked artifact and links it from the run. It
 retains both failed and successful candidates without changing their validation
 or execution outcome. The first run's candidate bodies were never persisted
-and cannot be recovered. No second live observation has been made.
+and cannot be recovered. The second live observation retained its decoded
+candidates and established a benchmark-design problem: the frozen victim
+exposed a pre-built defensive branch that the prompt prohibited Lightning from
+using. Those failed runs and their artifacts remain unchanged.
+
+The separate clean target removes that shortcut while preserving the same
+untrusted-review-to-privileged-model security property. Its unmodified P100
+leaks the canary and its P200 preserves useful benign review content. The
+normal trace and boundary evidence identify the clean source location; the
+source-context builder was generalized only to resolve one allowlisted
+`Class.method` location from that evidence. A test-only known-good proposal
+passes exact application, compilation, generated regression, clean P100,
+clean P200, compatible tests, cleanup, and repository immutability through the
+existing M4.1 path. The same fixture also succeeds through the existing
+bounded M4.2 path in one offline attempt. Trivial, constant, fixture-specific,
+verifier-targeting, and unauthorized controls do not receive proof.
+
+No live provider request was made for this correction, and no claim is made
+that Lightning can repair the clean benchmark. The next M4 action is one final
+separately authorized live Attack → Patch → Prove experiment.
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 

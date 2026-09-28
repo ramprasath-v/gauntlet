@@ -82,12 +82,64 @@ class RepairContext(StrictModel):
     failure_type: str = Field(min_length=1)
 
 
+MAX_EDIT_LINES = 120
+MAX_REGRESSION_LINES = 80
+MAX_GENERATED_LINE_LENGTH = 1_000
+
+
+def _validate_source_lines(lines: list[str]) -> list[str]:
+    for line in lines:
+        if "\n" in line or "\r" in line:
+            raise ValueError("structured source lines cannot contain LF or CR characters")
+        if len(line) > MAX_GENERATED_LINE_LENGTH:
+            raise ValueError("structured source line exceeds the length limit")
+    return lines
+
+
+class StructuredSourceEdit(StrictModel):
+    """One model-owned contiguous edit within the authorized source symbol."""
+
+    target_path: str = Field(min_length=1, max_length=500)
+    target_symbol: str = Field(min_length=1, max_length=500)
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    start_line: int = Field(ge=1, le=100_000)
+    delete_line_count: int = Field(ge=0, le=MAX_EDIT_LINES)
+    expected_original_lines: list[str] = Field(max_length=MAX_EDIT_LINES)
+    replacement_lines: list[str] = Field(max_length=MAX_EDIT_LINES)
+
+    @field_validator("expected_original_lines", "replacement_lines")
+    @classmethod
+    def valid_lines(cls, value: list[str]) -> list[str]:
+        return _validate_source_lines(value)
+
+    @model_validator(mode="after")
+    def coherent_range(self) -> "StructuredSourceEdit":
+        if len(self.expected_original_lines) != self.delete_line_count:
+            raise ValueError(
+                "expected_original_lines length must equal delete_line_count"
+            )
+        if self.delete_line_count == 0 and not self.replacement_lines:
+            raise ValueError("structured source edit must insert, replace, or delete")
+        return self
+
+
+class StructuredRegressionTest(StrictModel):
+    """Exact model-owned Python lines; Gauntlet only joins them with LF."""
+
+    lines: list[str] = Field(min_length=1, max_length=MAX_REGRESSION_LINES)
+
+    @field_validator("lines")
+    @classmethod
+    def valid_lines(cls, value: list[str]) -> list[str]:
+        return _validate_source_lines(value)
+
+
 class GeneratedRepairCandidate(StrictModel):
     """Decoded provider content; no patch or Python semantics are implied."""
 
     rationale: str = Field(max_length=8_000)
-    patch: str = Field(max_length=50_000)
-    regression_test: str = Field(max_length=50_000)
+    source_edit: StructuredSourceEdit
+    regression_test: StructuredRegressionTest
     optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
 
 

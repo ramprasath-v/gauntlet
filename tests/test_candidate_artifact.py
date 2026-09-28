@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -5,10 +6,19 @@ import pytest
 from pydantic import ValidationError
 
 from gauntlet.remediation.candidate_artifact import (
-    CANDIDATE_ARTIFACT_SCHEMA_VERSION, candidate_identity,
-    load_candidate_artifact, persist_candidate_artifact,
+    CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+    LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+    LegacyGeneratedRepairCandidate,
+    LegacyRepairCandidateArtifact,
+    _artifact_digest,
+    _legacy_candidate_identity,
+    candidate_identity,
+    load_candidate_artifact,
+    persist_candidate_artifact,
 )
-from gauntlet.remediation.models import GeneratedRepairCandidate
+from gauntlet.remediation.models import (
+    GeneratedRepairCandidate, StructuredRegressionTest, StructuredSourceEdit,
+)
 from gauntlet.sandbox.workspace import repository_digest
 
 
@@ -16,20 +26,21 @@ ROOT = Path(__file__).parents[1]
 TARGET = "victims/customer_support/agent.py"
 
 
-def candidate(kind: str) -> GeneratedRepairCandidate:
-    patch = (
-        f"--- a/{TARGET}\n+++ b/{TARGET}\n"
-        "@@ -1 +1 @@\n-old\n+new\n"
-    )
-    regression = "def test_boundary():\n    assert True\n"
-    if kind == "malformed_diff":
-        patch = f"--- a/{TARGET}\n+replacement without hunk\n"
-    if kind == "malformed_python":
-        regression = "def test_boundary(:\n    assert True\n"
+def candidate() -> GeneratedRepairCandidate:
     return GeneratedRepairCandidate(
-        rationale="Exact rationale.\nSecond line remains exact.",
-        patch=patch,
-        regression_test=regression,
+        rationale="Exact rationale.",
+        source_edit=StructuredSourceEdit(
+            target_path=TARGET,
+            target_symbol="CustomerSupportAgent.chat",
+            source_hash="0" * 64,
+            start_line=2,
+            delete_line_count=1,
+            expected_original_lines=["        old_value = True"],
+            replacement_lines=["        new_value = True"],
+        ),
+        regression_test=StructuredRegressionTest(lines=[
+            "def test_boundary():", "    assert True",
+        ]),
         optional_policy_artifact="Exact policy artifact.",
     )
 
@@ -49,33 +60,73 @@ def persist(value: GeneratedRepairCandidate, path: Path):
         target_path=TARGET,
         target_symbol="CustomerSupportAgent.chat",
         source_hash="0" * 64,
+        derived_patch=(
+            f"--- a/{TARGET}\n+++ b/{TARGET}\n"
+            "@@ -1 +1 @@\n-old_value = True\n+new_value = True\n"
+        ),
+        derived_regression_test="def test_boundary():\n    assert True\n",
     )
 
 
-@pytest.mark.parametrize("kind", [
-    "malformed_diff", "malformed_python", "valid",
-])
-def test_candidate_artifact_preserves_decoded_fields_exactly(kind, tmp_path):
-    original = candidate(kind)
-    path = tmp_path / f"{kind}.json"
+def test_candidate_artifact_preserves_structured_and_derived_content_exactly(tmp_path):
+    original = candidate()
+    path = tmp_path / "candidate.json"
     artifact = persist(original, path)
     loaded = load_candidate_artifact(path)
 
     assert loaded.schema_version == CANDIDATE_ARTIFACT_SCHEMA_VERSION
     assert loaded.candidate() == original
-    assert loaded.rationale == original.rationale
-    assert loaded.patch == original.patch
+    assert loaded.source_edit == original.source_edit
     assert loaded.regression_test == original.regression_test
-    assert loaded.optional_policy_artifact == original.optional_policy_artifact
+    assert loaded.derived_patch == artifact.derived_patch
+    assert loaded.derived_regression_test == artifact.derived_regression_test
     expected_digest, expected_fields = candidate_identity(original)
     assert loaded.candidate_digest == expected_digest
     assert loaded.candidate_field_digests == expected_fields
     assert loaded.integrity_digest == artifact.integrity_digest
 
-    if kind == "malformed_diff":
-        path.write_text(path.read_text().replace("replacement", "tampered", 1))
-        with pytest.raises(ValidationError, match="integrity failed"):
-            load_candidate_artifact(path)
+
+@pytest.mark.parametrize("field", [
+    "new_value = True", "def test_boundary():", "Exact rationale.",
+])
+def test_candidate_artifact_tampering_is_rejected(field, tmp_path):
+    path = tmp_path / "candidate.json"
+    persist(candidate(), path)
+    path.write_text(path.read_text().replace(field, field + " # tampered", 1))
+    with pytest.raises(ValidationError, match="integrity failed"):
+        load_candidate_artifact(path)
+
+
+def test_version_one_candidate_artifact_still_loads(tmp_path):
+    legacy = LegacyGeneratedRepairCandidate(
+        rationale="Legacy rationale.",
+        patch=f"--- a/{TARGET}\n+++ b/{TARGET}\n@@ -1 +1 @@\n-old\n+new\n",
+        regression_test="def test_legacy():\n    assert True\n",
+        optional_policy_artifact=None,
+    )
+    candidate_digest, field_digests = _legacy_candidate_identity(legacy)
+    values = dict(
+        schema_version=LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+        candidate_id=str(uuid4()), run_id=str(uuid4()), attempt_number=1,
+        provider="legacy", model="legacy", created_at=datetime.now(timezone.utc),
+        trace_id="trace", boundary_id="boundary", evidence_ids=["evidence"],
+        target_path=TARGET, target_symbol="CustomerSupportAgent.chat",
+        source_hash="0" * 64, **legacy.model_dump(),
+        candidate_digest=candidate_digest, candidate_field_digests=field_digests,
+    )
+    provisional = LegacyRepairCandidateArtifact.model_construct(
+        **values, integrity_digest="0" * 64
+    )
+    artifact = LegacyRepairCandidateArtifact(
+        **values, integrity_digest=_artifact_digest(provisional)
+    )
+    path = tmp_path / "legacy.json"
+    path.write_text(artifact.model_dump_json(indent=2) + "\n")
+
+    loaded = load_candidate_artifact(path)
+
+    assert loaded.schema_version == LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION
+    assert loaded.legacy_candidate() == legacy
 
 
 def test_candidate_artifact_excludes_external_secrets_and_preserves_repository(
@@ -85,7 +136,7 @@ def test_candidate_artifact_excludes_external_secrets_and_preserves_repository(
     monkeypatch.setenv("NEBIUS_API_KEY", external_secret)
     before = repository_digest(ROOT)
     path = tmp_path / "candidate.json"
-    persist(candidate("valid"), path)
+    persist(candidate(), path)
     serialized = path.read_text()
 
     assert external_secret not in serialized

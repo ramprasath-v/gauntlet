@@ -8,12 +8,16 @@ from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
-from gauntlet.remediation.models import GeneratedRepairCandidate, StrictModel
+from gauntlet.remediation.models import (
+    GeneratedRepairCandidate, StrictModel, StructuredRegressionTest,
+    StructuredSourceEdit,
+)
 
 
-CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v1"
+LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v1"
+CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v2"
 CANDIDATE_FIELDS = (
-    "rationale", "patch", "regression_test", "optional_policy_artifact",
+    "rationale", "source_edit", "regression_test", "optional_policy_artifact",
 )
 
 
@@ -34,8 +38,30 @@ def candidate_identity(
     )
 
 
+class LegacyGeneratedRepairCandidate(StrictModel):
+    rationale: str
+    patch: str
+    regression_test: str
+    optional_policy_artifact: str | None = None
+
+
+def _legacy_candidate_identity(
+    candidate: LegacyGeneratedRepairCandidate,
+) -> tuple[str, dict[str, str]]:
+    fields = candidate.model_dump(mode="json")
+    return (
+        _digest(candidate.model_dump_json()),
+        {
+            name: _digest(json.dumps(value, ensure_ascii=True))
+            for name, value in fields.items()
+        },
+    )
+
+
 class CandidateArtifactReference(StrictModel):
-    schema_version: Literal["gauntlet.repair-candidate.v1"]
+    schema_version: Literal[
+        "gauntlet.repair-candidate.v1", "gauntlet.repair-candidate.v2"
+    ]
     candidate_id: str
     attempt_number: int = Field(ge=1, le=3)
     path: str
@@ -57,8 +83,7 @@ class CandidateArtifactReference(StrictModel):
         return path.as_posix()
 
 
-class RepairCandidateArtifact(StrictModel):
-    schema_version: Literal["gauntlet.repair-candidate.v1"]
+class _ArtifactIdentity(StrictModel):
     candidate_id: str
     run_id: str
     attempt_number: int = Field(ge=1, le=3)
@@ -71,10 +96,6 @@ class RepairCandidateArtifact(StrictModel):
     target_path: str
     target_symbol: str
     source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    rationale: str
-    patch: str
-    regression_test: str
-    optional_policy_artifact: str | None = None
     candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     candidate_field_digests: dict[str, str]
     integrity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -85,10 +106,53 @@ class RepairCandidateArtifact(StrictModel):
         UUID(value)
         return value
 
+
+class LegacyRepairCandidateArtifact(_ArtifactIdentity):
+    schema_version: Literal["gauntlet.repair-candidate.v1"]
+    rationale: str
+    patch: str
+    regression_test: str
+    optional_policy_artifact: str | None = None
+
+    def legacy_candidate(self) -> LegacyGeneratedRepairCandidate:
+        return LegacyGeneratedRepairCandidate(
+            rationale=self.rationale,
+            patch=self.patch,
+            regression_test=self.regression_test,
+            optional_policy_artifact=self.optional_policy_artifact,
+        )
+
+    @model_validator(mode="after")
+    def exact_content_and_integrity(self) -> "LegacyRepairCandidateArtifact":
+        candidate_digest, field_digests = _legacy_candidate_identity(
+            self.legacy_candidate()
+        )
+        if self.candidate_digest != candidate_digest:
+            raise ValueError("Repair candidate integrity failed: candidate_digest")
+        if self.candidate_field_digests != field_digests:
+            raise ValueError("Repair candidate integrity failed: field digests")
+        if self.integrity_digest != _artifact_digest(self):
+            raise ValueError("Repair candidate integrity failed: integrity_digest")
+        return self
+
+
+class RepairCandidateArtifact(_ArtifactIdentity):
+    schema_version: Literal["gauntlet.repair-candidate.v2"]
+    rationale: str
+    source_edit: StructuredSourceEdit
+    regression_test: StructuredRegressionTest
+    optional_policy_artifact: str | None = None
+    derived_patch: str | None = None
+    derived_regression_test: str | None = None
+    derived_patch_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    derived_regression_test_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+
     def candidate(self) -> GeneratedRepairCandidate:
         return GeneratedRepairCandidate(
             rationale=self.rationale,
-            patch=self.patch,
+            source_edit=self.source_edit,
             regression_test=self.regression_test,
             optional_policy_artifact=self.optional_policy_artifact,
         )
@@ -100,19 +164,40 @@ class RepairCandidateArtifact(StrictModel):
             raise ValueError("Repair candidate integrity failed: candidate_digest")
         if self.candidate_field_digests != field_digests:
             raise ValueError("Repair candidate integrity failed: field digests")
+        derived = (
+            self.derived_patch,
+            self.derived_regression_test,
+            self.derived_patch_digest,
+            self.derived_regression_test_digest,
+        )
+        if any(value is not None for value in derived) and any(
+            value is None for value in derived
+        ):
+            raise ValueError("Derived candidate evidence must be complete or absent")
+        if self.derived_patch is not None:
+            if self.derived_patch_digest != _digest(self.derived_patch):
+                raise ValueError("Repair candidate integrity failed: derived patch")
+            if self.derived_regression_test_digest != _digest(
+                self.derived_regression_test or ""
+            ):
+                raise ValueError("Repair candidate integrity failed: derived regression")
         if self.integrity_digest != _artifact_digest(self):
             raise ValueError("Repair candidate integrity failed: integrity_digest")
         return self
 
 
-def _artifact_payload(artifact: RepairCandidateArtifact) -> str:
+def _artifact_payload(
+    artifact: RepairCandidateArtifact | LegacyRepairCandidateArtifact,
+) -> str:
     return json.dumps(
         artifact.model_dump(mode="json", exclude={"integrity_digest"}),
         ensure_ascii=True, sort_keys=True, separators=(",", ":"),
     )
 
 
-def _artifact_digest(artifact: RepairCandidateArtifact) -> str:
+def _artifact_digest(
+    artifact: RepairCandidateArtifact | LegacyRepairCandidateArtifact,
+) -> str:
     return _digest(_artifact_payload(artifact))
 
 
@@ -131,6 +216,8 @@ def persist_candidate_artifact(
     target_path: str,
     target_symbol: str,
     source_hash: str,
+    derived_patch: str | None = None,
+    derived_regression_test: str | None = None,
 ) -> RepairCandidateArtifact:
     candidate_digest, field_digests = candidate_identity(candidate)
     values = dict(
@@ -147,7 +234,19 @@ def persist_candidate_artifact(
         target_path=target_path,
         target_symbol=target_symbol,
         source_hash=source_hash,
-        **candidate.model_dump(),
+        rationale=candidate.rationale,
+        source_edit=candidate.source_edit,
+        regression_test=candidate.regression_test,
+        optional_policy_artifact=candidate.optional_policy_artifact,
+        derived_patch=derived_patch,
+        derived_regression_test=derived_regression_test,
+        derived_patch_digest=(
+            _digest(derived_patch) if derived_patch is not None else None
+        ),
+        derived_regression_test_digest=(
+            _digest(derived_regression_test)
+            if derived_regression_test is not None else None
+        ),
         candidate_digest=candidate_digest,
         candidate_field_digests=field_digests,
     )
@@ -162,8 +261,14 @@ def persist_candidate_artifact(
     return artifact
 
 
-def load_candidate_artifact(path: Path) -> RepairCandidateArtifact:
-    return RepairCandidateArtifact.model_validate_json(path.read_text())
+def load_candidate_artifact(
+    path: Path,
+) -> RepairCandidateArtifact | LegacyRepairCandidateArtifact:
+    raw = path.read_text()
+    payload = json.loads(raw)
+    if payload.get("schema_version") == LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION:
+        return LegacyRepairCandidateArtifact.model_validate_json(raw)
+    return RepairCandidateArtifact.model_validate_json(raw)
 
 
 def candidate_artifact_location(

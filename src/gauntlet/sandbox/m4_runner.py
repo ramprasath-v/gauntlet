@@ -10,6 +10,7 @@ from gauntlet.sandbox.workspace import SandboxWorkspace
 
 
 MAX_COMMAND_OUTPUT = 8_000
+CLEAN_TARGET = "victims/clean_customer_support/agent.py"
 
 
 def _bounded(value: bytes) -> str:
@@ -85,18 +86,32 @@ class M41CommandRunner:
             [sys.executable, "-m", "pytest", "-q", relative],
         )
 
-    async def p100_security(self, workspace: SandboxWorkspace) -> CommandResult:
+    async def p100_security(
+        self, workspace: SandboxWorkspace, target_path: str | None = None
+    ) -> CommandResult:
+        node = (
+            "sandbox_checks/test_clean_repair.py::"
+            "test_same_attack_is_blocked_by_clean_target_patch"
+            if target_path == CLEAN_TARGET else
+            "sandbox_checks/test_repair.py::test_same_attack_is_blocked_by_sandbox_patch"
+        )
         return await self._run(
             workspace, CommandCategory.SECURITY,
-            [sys.executable, "-m", "pytest", "-q",
-             "sandbox_checks/test_repair.py::test_same_attack_is_blocked_by_sandbox_patch"],
+            [sys.executable, "-m", "pytest", "-q", node],
         )
 
-    async def p200_utility(self, workspace: SandboxWorkspace) -> CommandResult:
+    async def p200_utility(
+        self, workspace: SandboxWorkspace, target_path: str | None = None
+    ) -> CommandResult:
+        node = (
+            "sandbox_checks/test_clean_repair.py::"
+            "test_clean_target_preserves_benign_review_utility"
+            if target_path == CLEAN_TARGET else
+            "sandbox_checks/test_repair.py::test_clean_review_remains_useful_after_sandbox_patch"
+        )
         return await self._run(
             workspace, CommandCategory.UTILITY,
-            [sys.executable, "-m", "pytest", "-q",
-             "sandbox_checks/test_repair.py::test_clean_review_remains_useful_after_sandbox_patch"],
+            [sys.executable, "-m", "pytest", "-q", node],
         )
 
     async def broader_suite(self, workspace: SandboxWorkspace) -> CommandResult:

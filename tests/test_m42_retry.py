@@ -1,4 +1,3 @@
-import difflib
 import json
 from pathlib import Path
 
@@ -8,10 +7,14 @@ from pydantic import ValidationError
 
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
-from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL, NebiusTokenFactoryClient
+from gauntlet.llm.nebius import (
+    NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL, NebiusTokenFactoryClient,
+)
 from gauntlet.remediation.candidate_artifact import load_candidate_artifact
 from gauntlet.remediation.fake import FakeRemediationProvider
-from gauntlet.remediation.models import GeneratedRepairCandidate
+from gauntlet.remediation.models import (
+    GeneratedRepairCandidate, StructuredRegressionTest, StructuredSourceEdit,
+)
 from gauntlet.remediation.parsing import parse_generated_repair_candidate
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
 from gauntlet.remediation.retry import M42RepairOrchestrator
@@ -80,10 +83,20 @@ class ScriptedRetryProvider:
         return self._metadata
 
 
-def test_m42_rejects_non_lightning_provider_configuration():
+@pytest.mark.parametrize("model", [NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL])
+def test_m42_accepts_approved_live_remediation_models(model):
+    provider = ScriptedRetryProvider([])
+    provider.model_name = model
+
+    orchestrator = M42RepairOrchestrator(ROOT, provider)
+
+    assert orchestrator.provider.model_name == model
+
+
+def test_m42_rejects_unapproved_provider_configuration():
     provider = ScriptedRetryProvider([])
     provider.model_name = "nvidia/nemotron-3-super-120b-a12b"
-    with pytest.raises(ValueError, match="Nemotron-3_5-Lightning"):
+    with pytest.raises(ValueError, match="explicitly approved"):
         M42RepairOrchestrator(ROOT, provider)
 
 
@@ -93,15 +106,11 @@ async def valid_raw(request) -> str:
 
 async def changed_raw(request, **changes) -> str:
     candidate = parse_generated_repair_candidate(await valid_raw(request))
+    if isinstance(changes.get("regression_test"), str):
+        changes["regression_test"] = StructuredRegressionTest(
+            lines=changes["regression_test"].splitlines()
+        )
     return candidate.model_copy(update=changes).model_dump_json()
-
-
-def patch_for(changed: str) -> str:
-    source = (ROOT / TARGET).read_text()
-    return "".join(difflib.unified_diff(
-        source.splitlines(keepends=True), changed.splitlines(keepends=True),
-        fromfile=f"a/{TARGET}", tofile=f"b/{TARGET}",
-    ))
 
 
 async def invalid_syntax(request, marker="one"):
@@ -114,14 +123,44 @@ async def invalid_syntax(request, marker="one"):
     )
 
 
-async def patch_apply_failure(request):
-    return await changed_raw(
-        request,
-        patch=(
-            f"--- a/{TARGET}\n+++ b/{TARGET}\n"
-            "@@ -1 +1 @@\n-absent source line\n+replacement\n"
-        ),
+def edit_for_changed_source(request, changed: str) -> StructuredSourceEdit:
+    source = (ROOT / TARGET).read_text()
+    original_lines = source.splitlines()
+    changed_lines = changed.splitlines()
+    bounded_lines = request.source_context.source_text.splitlines()
+    symbol_start = next(
+        index for index in range(len(original_lines))
+        if original_lines[index:index + len(bounded_lines)] == bounded_lines
     )
+    prefix = 0
+    while (prefix < len(original_lines) and prefix < len(changed_lines)
+           and original_lines[prefix] == changed_lines[prefix]):
+        prefix += 1
+    suffix = 0
+    while (suffix < len(original_lines) - prefix
+           and suffix < len(changed_lines) - prefix
+           and original_lines[-1 - suffix] == changed_lines[-1 - suffix]):
+        suffix += 1
+    original_end = len(original_lines) - suffix
+    changed_end = len(changed_lines) - suffix
+    return StructuredSourceEdit(
+        target_path=request.repair_context.target_path,
+        target_symbol=request.repair_context.target_symbol,
+        source_hash=request.repair_context.source_hash,
+        start_line=prefix - symbol_start + 1,
+        delete_line_count=original_end - prefix,
+        expected_original_lines=original_lines[prefix:original_end],
+        replacement_lines=changed_lines[prefix:changed_end],
+    )
+
+
+async def compile_failure(request):
+    source = (ROOT / TARGET).read_text()
+    changed = source.replace(
+        "    async def chat(self, message: str) -> ChatResponse:",
+        "    async def chat(self, message: str) -> ChatResponse",
+    )
+    return await changed_raw(request, source_edit=edit_for_changed_source(request, changed))
 
 
 async def regression_failure(request):
@@ -139,7 +178,7 @@ async def security_failure(request):
         "        # candidate leaves the boundary vulnerable\n",
     )
     return await changed_raw(
-        request, patch=patch_for(changed),
+        request, source_edit=edit_for_changed_source(request, changed),
         regression_test="def test_candidate_runs():\n    assert True\n",
     )
 
@@ -157,7 +196,7 @@ async def utility_failure(request):
         "review = None if product_id == \"P200\" else search_reviews(product_id)",
     )
     return await changed_raw(
-        request, patch=patch_for(changed),
+        request, source_edit=edit_for_changed_source(request, changed),
         regression_test="def test_candidate_runs():\n    assert True\n",
     )
 
@@ -198,17 +237,22 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
     )
     assert first_artifact.candidate_id == result.attempts[0].candidate_id
     assert first_artifact.candidate_digest == result.attempts[0].candidate_digest
-    assert first_artifact.regression_test == (
+    assert first_artifact.regression_test.lines == [
+        "# malformed-candidate-one", "def test_bad(:", "    assert True",
+    ]
+    assert first_artifact.derived_patch is not None
+    assert first_artifact.derived_regression_test == (
         "# malformed-candidate-one\ndef test_bad(:\n    assert True\n"
     )
     assert result.attempts[0].repair_id is None
     assert result.attempts[0].candidate_validation == "FAIL"
-    assert second_artifact.candidate() == GeneratedRepairCandidate(
-        rationale=result.final_proposal.rationale,
-        patch=result.final_proposal.patch,
-        regression_test=result.final_proposal.regression_test,
-        optional_policy_artifact=result.final_proposal.optional_policy_artifact,
+    second_candidate = second_artifact.candidate()
+    assert second_candidate.rationale == result.final_proposal.rationale
+    assert "\n".join(second_candidate.regression_test.lines) + "\n" == (
+        result.final_proposal.regression_test
     )
+    assert second_artifact.derived_patch == result.final_proposal.patch
+    assert second_artifact.derived_regression_test == result.final_proposal.regression_test
 
     serialized_feedback = json.dumps(provider.revisions)
     assert "hidden_reasoning" not in serialized_feedback
@@ -218,7 +262,7 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
 @pytest.mark.parametrize(
     ("first_candidate", "stage"),
     [
-        (patch_apply_failure, "patch_apply"),
+        (compile_failure, "compile"),
         (regression_failure, "regression_execution"),
         (security_failure, "security_test"),
         (utility_failure, "utility_test"),
@@ -357,6 +401,8 @@ async def test_lightning_revision_keeps_frozen_schema_reasoning_and_token_contra
     revision = json.loads(observed["messages"][1]["content"])["revision"]
     assert revision["previous_failure"]["failure_stage"] == "patch_apply"
     assert "Produce a new revised candidate" in revision["instruction"]
+    assert "Correct only what is necessary" in revision["instruction"]
+    assert "concise output budgets" in revision["instruction"]
 
 
 async def test_run_evidence_tamper_is_rejected(serialized_trace, tmp_path):

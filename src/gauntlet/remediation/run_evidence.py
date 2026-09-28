@@ -81,4 +81,15 @@ def load_repair_run(path: Path) -> RepairRunResult:
             or artifact.boundary_id != result.boundary_id
         ):
             raise ValueError("Repair run candidate artifact linkage failed")
+        if (
+            result.status == "VERIFIED"
+            and attempt.attempt == result.successful_attempt
+            and artifact.schema_version == "gauntlet.repair-candidate.v2"
+            and (
+                artifact.derived_patch != result.final_proposal.patch
+                or artifact.derived_regression_test
+                != result.final_proposal.regression_test
+            )
+        ):
+            raise ValueError("Derived candidate evidence differs from executed proposal")
     return result

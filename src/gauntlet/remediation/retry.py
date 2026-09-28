@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from uuid import uuid4
 
-from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL
+from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL
 from gauntlet.remediation.candidate_artifact import (
     CANDIDATE_ARTIFACT_SCHEMA_VERSION, CandidateArtifactReference,
     candidate_artifact_location, persist_candidate_artifact,
@@ -34,6 +34,10 @@ from gauntlet.tracing.models import AttackTrace
 
 MAX_PROVIDER_ATTEMPTS = 3
 FEEDBACK_FIELD_LIMIT = 8_000
+APPROVED_LIVE_REMEDIATION_MODELS = frozenset({
+    NEMOTRON_LIGHTNING_MODEL,
+    QWEN_35_MODEL,
+})
 _SECRET = re.compile(
     r"(?i)((?:api[_-]?key|authorization|access[_-]?token|password|secret)"
     r"\s*[=:]\s*['\"]?)[^\s'\"]+"
@@ -64,22 +68,31 @@ def _candidate_identity(
             for name, value in fields.items()
         },
         {
-            name: len(value) if isinstance(value, str) else 0
+            name: len(value) if isinstance(value, str) else len(
+                json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+            )
             for name, value in fields.items()
         },
     )
 
 
-def _safe_candidate(candidate: GeneratedRepairCandidate | None) -> dict[str, str | None]:
+def _safe_value(value: object) -> object:
+    if isinstance(value, str):
+        return _safe_text(value)
+    if isinstance(value, list):
+        return [_safe_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _safe_value(item) for key, item in value.items()}
+    return value
+
+
+def _safe_candidate(candidate: GeneratedRepairCandidate | None) -> dict[str, object]:
     if candidate is None:
         return {
-            "rationale": None, "patch": None, "regression_test": None,
+            "rationale": None, "source_edit": None, "regression_test": None,
             "optional_policy_artifact": None,
         }
-    return {
-        name: _safe_text(value) if isinstance(value, str) else None
-        for name, value in candidate.model_dump().items()
-    }
+    return _safe_value(candidate.model_dump(mode="json"))
 
 
 _STAGE_GUIDANCE = {
@@ -148,9 +161,9 @@ class M42RepairOrchestrator:
         executor_factory: Callable[[Path], M41RepairExecutor] | None = None,
     ):
         self.repository_root = repository_root.resolve(strict=True)
-        if provider.model_name != NEMOTRON_LIGHTNING_MODEL:
+        if provider.model_name not in APPROVED_LIVE_REMEDIATION_MODELS:
             raise ValueError(
-                "M4.2 requires the configured nvidia/Nemotron-3_5-Lightning model"
+                "M4.2 requires an explicitly approved live remediation model"
             )
         self.provider = provider
         self.executor_factory = executor_factory or M41RepairExecutor
@@ -268,6 +281,7 @@ class M42RepairOrchestrator:
             candidate_validation = "NOT_RUN"
             proposal_execution = "NOT_RUN"
             patch_proof = "NOT_RUN"
+            materialized: dict[str, str] = {}
 
             try:
                 if attempt_number == 1:
@@ -314,7 +328,9 @@ class M42RepairOrchestrator:
                     )
                 else:
                     validated = validate_candidate(
-                        candidate, request.repair_context, attempt=attempt_number
+                        candidate, request.repair_context, self.repository_root,
+                        attempt=attempt_number,
+                        materialized_output=materialized,
                     )
                     if isinstance(validated, RepairFailure):
                         candidate_validation = "FAIL"
@@ -371,6 +387,10 @@ class M42RepairOrchestrator:
                     target_path=request.repair_context.target_path,
                     target_symbol=request.repair_context.target_symbol,
                     source_hash=request.repair_context.source_hash,
+                    derived_patch=materialized.get("patch"),
+                    derived_regression_test=(
+                        materialized.get("regression_test")
+                    ),
                 )
                 candidate_artifact = CandidateArtifactReference(
                     schema_version=CANDIDATE_ARTIFACT_SCHEMA_VERSION,

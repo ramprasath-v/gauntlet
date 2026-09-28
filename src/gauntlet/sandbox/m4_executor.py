@@ -282,7 +282,9 @@ class M41RepairExecutor:
                     )
 
             if failure is None:
-                security_result = await self.runner.p100_security(workspace)
+                security_result = await self.runner.p100_security(
+                    workspace, proposal.target_path
+                )
                 evidence["p100_security_evidence"] = security_result
                 if not security_result.passed:
                     failure = self._command_failure(
@@ -292,7 +294,9 @@ class M41RepairExecutor:
                     )
 
             if failure is None:
-                utility_result = await self.runner.p200_utility(workspace)
+                utility_result = await self.runner.p200_utility(
+                    workspace, proposal.target_path
+                )
                 evidence["p200_utility_evidence"] = utility_result
                 if not utility_result.passed:
                     failure = self._command_failure(

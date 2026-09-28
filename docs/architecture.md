@@ -40,8 +40,14 @@ Evidence strength DETERMINISTIC describes reproducible checks over the local ins
 missing boundary, missing evidence, absolute/traversal paths, non-allowlisted
 targets, resolution outside the repository, and source locations that differ
 from the location embedded in boundary evidence. It extracts only the
-`CustomerSupportAgent.chat` AST span, caps it at 12,000 characters, and hashes
+authorized `Class.method` AST span, caps it at 12,000 characters, and hashes
 that exact text.
+
+The target allowlist now contains the frozen historical victim and the clean
+repair benchmark. This is the only M2/M3 generalization: source selection is
+derived from the single location carried by boundary evidence, then checked
+against the allowlist and resolved by its declared class and method names. It
+does not choose a repair or expose a patch.
 
 `RemediationProvider` separates generation from orchestration. The production
 provider sends a defensive system contract and serialized M2 evidence/source
@@ -60,18 +66,22 @@ content without network access.
 M3.3 restores the trust boundary between deterministic state and generated
 content. `RepairContext` contains the trace/boundary/evidence IDs,
 provider/model identity, authorized path and symbol, source hash, and failure
-type. The provider schema contains only rationale, patch, regression test, and
-optional policy artifact. Extra fields are forbidden. After deterministic
+type. The provider schema contains only rationale, a bounded structured source
+edit, structured regression-test lines, and an optional policy artifact. Extra
+fields are forbidden. After deterministic
 candidate validation, Gauntlet generates the
 repair UUID and assembles `RepairProposal` from `RepairContext` plus
 generated content. The model cannot redefine authoritative metadata.
 
 M3.4 adds the candidate-validation boundary. Provider JSON is decoded into
-`GeneratedRepairCandidate` using only exact-field, basic-type, and size checks;
-malformed patch or Python strings remain representable. `validate_candidate`
-then checks, in order: non-empty rationale, unified-diff structure, target and
-canary authorization, Python syntax, test function/assertion structure, and an
-optional non-empty policy artifact. It performs no repairs. A passing candidate
+`GeneratedRepairCandidate` using only exact-field, basic-type, and size checks.
+Each source or regression line rejects embedded LF and CR characters.
+`validate_candidate` then checks, in order: non-empty rationale, trusted path,
+symbol and source hash, a range wholly inside the authorized symbol, an exact
+expected-source slice, canary authorization, Python syntax,
+test-function/assertion structure, and an optional non-empty policy artifact.
+It splices only the model's replacement lines, derives a unified diff, and joins
+the model's regression lines with LF; it performs no semantic repairs. A passing candidate
 becomes `RepairProposal`. A rejected candidate becomes `RepairFailure` with
 trusted trace/source identity, stage and code, bounded redacted diagnostics,
 attempt number, timestamp, and hashes/lengths that identify the exact candidate
@@ -141,9 +151,9 @@ Python repository and does not implement syscall-level network denial.
 three provider calls. Attempt one uses the normal M3 prompt. Later calls use a
 separate revision message containing the original security objective and
 authorized source, a bounded redacted view of the previous candidate, and the
-previous `RepairFailure` stage, code, message, and safe diagnostics. Lightning
-retains `enable_thinking=false`, `max_tokens=4096`, and the exact strict
-`GeneratedRepairCandidate` JSON schema.
+previous `RepairFailure` stage, code, message, and safe diagnostics. Approved
+models retain their configured reasoning controls, `max_tokens=4096`, and the
+exact strict `GeneratedRepairCandidate` JSON schema.
 
 Every response is decoded and deterministically validated from scratch. A
 retry whose candidate digest matches any earlier attempt is rejected before
@@ -171,12 +181,16 @@ is verified offline only; a live bounded run requires separate authorization.
 
 When M4.2 receives a run-evidence path, each successfully decoded
 `GeneratedRepairCandidate` is written independently as
-`gauntlet.repair-candidate.v1`, including candidates that later fail diff,
-authorization, Python, or test-structure validation. Its rationale, patch,
-regression test, and optional policy artifact are serialized without
-normalization or repair. Loading reconstructs those four fields and verifies
-the candidate digest, every field digest, and an integrity digest over the
-complete artifact metadata and content.
+`gauntlet.repair-candidate.v2`, including candidates that later fail
+authorization, Python, or test-structure validation. Its rationale, structured
+source edit, structured regression test, and optional policy artifact are
+serialized without normalization or repair. When source authorization and
+identity permit deterministic materialization, the artifact also stores and
+digests the mechanically derived unified diff and regression source. Loading
+verifies the candidate digest, every field digest, the derived-artifact digests,
+and an integrity digest over the complete artifact metadata and content.
+Existing `gauntlet.repair-candidate.v1` artifacts retain their original loader
+and digest validation.
 
 The candidate artifact adds only trusted run ID, attempt number,
 provider/model, timestamp, trace/boundary/evidence IDs, target identity, and
@@ -195,3 +209,29 @@ Candidate retention occurs after decoding and does not participate in
 deterministic candidate validation, proposal assembly, retry selection, M4.1
 execution, or proof. **GeneratedRepairCandidate != RepairProposal != Applied
 patch != PatchProof.**
+
+## Clean M4 Repair Benchmark
+
+`victims/clean_customer_support` is a separate target so frozen M1/M2 behavior
+and prior evidence remain intact. Its vulnerable method takes UNTRUSTED
+`search_reviews` output and interpolates it into the privileged system prompt.
+The deterministic role-sensitive simulator follows instruction-like review
+content only in that privileged channel. Thus P100 leaks the same synthetic
+canary through the same attack and exact-match verifier, while P200 returns the
+benign review's useful construction and setup details.
+
+The bounded source span contains the vulnerability directly and no defensive
+flag, disabled secure branch, sanitizer, expected patch, canary value, product
+fixture ID, or test instruction. M4.1 remains one executor: target identity
+selects the corresponding fixed clean P100/P200 verifier nodes, and every other
+source-identity, exact-diff, compilation, generated-test, compatible-suite,
+cleanup, and immutability gate is unchanged. Clean P100 also exercises another
+poisoned review in the same attack family so a P100-only fixture branch cannot
+earn proof.
+
+The solvability fixture is defined only in
+`tests/test_clean_repair_benchmark.py` and injected only by offline tests. The
+production source-context builder, prompt builder, provider, validator,
+executor, and retry orchestrator do not import it. The fixture demonstrates
+that a real role-boundary repair can reach `VERIFIED`; it is not evidence of a
+live Lightning repair.

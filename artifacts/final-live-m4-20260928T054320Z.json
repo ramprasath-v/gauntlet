@@ -1,0 +1,291 @@
+{
+  "schema_version": "gauntlet.repair-run.v1",
+  "result": {
+    "status": "FAILED",
+    "run_id": "3ce47807-e514-44d7-801f-2c3e203b43cd",
+    "trace_id": "0aad24eb-b6ef-4f32-b16a-46da843c5d60",
+    "boundary_id": "99d67d3a-c9fb-46bc-b9d4-3a5e8c268f1d",
+    "evidence_ids": [
+      "5d6869c4-4994-4fbe-ae47-a8c1e6d5b20b",
+      "bc359e97-7aae-4cf5-8ed5-33ee7ba28a83",
+      "29906e16-1b3b-44d4-ad98-a293d900b622",
+      "3a4658e2-79cb-4f9b-bc65-58b6ba22ee4a",
+      "cc287bcc-a7fc-4b50-8e73-6a14d1f46030"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "total_attempts": 3,
+    "attempts": [
+      {
+        "attempt": 1,
+        "candidate_id": "42c802dd-6728-46cb-84e0-e3d2d04c8894",
+        "previous_failure_id": null,
+        "provider": "nebius_token_factory",
+        "model": "nvidia/Nemotron-3_5-Lightning",
+        "candidate_digest": "2a07af2281e7a505ff6f5b59a2887ba5787a9456f9d86963be5ad7333d16b870",
+        "candidate_field_digests": {},
+        "candidate_field_lengths": {},
+        "candidate_artifact": null,
+        "provider_call": "PASS",
+        "candidate_decode": "FAIL",
+        "candidate_validation": "NOT_RUN",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "38a29f10-8355-4162-a9de-787710a912fe",
+          "repair_id": null,
+          "candidate_id": "42c802dd-6728-46cb-84e0-e3d2d04c8894",
+          "candidate_digest": "2a07af2281e7a505ff6f5b59a2887ba5787a9456f9d86963be5ad7333d16b870",
+          "candidate_field_digests": {},
+          "candidate_field_lengths": {},
+          "trace_id": "0aad24eb-b6ef-4f32-b16a-46da843c5d60",
+          "boundary_id": "99d67d3a-c9fb-46bc-b9d4-3a5e8c268f1d",
+          "evidence_ids": [
+            "5d6869c4-4994-4fbe-ae47-a8c1e6d5b20b",
+            "bc359e97-7aae-4cf5-8ed5-33ee7ba28a83",
+            "29906e16-1b3b-44d4-ad98-a293d900b622",
+            "3a4658e2-79cb-4f9b-bc65-58b6ba22ee4a",
+            "cc287bcc-a7fc-4b50-8e73-6a14d1f46030"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "nvidia/Nemotron-3_5-Lightning",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "candidate_decode_failed",
+          "message": "Provider content did not decode as a repair candidate.",
+          "diagnostics": {
+            "error_type": "GeneratedRepairCandidateJSONError",
+            "detail": "Provider output is not valid GeneratedRepairCandidate JSON (length=9701, line=1, column=826, code_point=U+0022, window=\"ppend(ExecutionEvent(kind=\\\", \\\"regression_test\\\": \\\"import re, textwrap, sys, io, types, contextlib,\")"
+          },
+          "attempt": 1,
+          "created_at": "2026-09-28T05:44:20.208650Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-b2d3b4d9",
+          "returned_model": "nvidia/Nemotron-3_5-Lightning",
+          "finish_reason": "length",
+          "content_type": "str",
+          "content_length": 9701,
+          "prompt_tokens": 1964,
+          "completion_tokens": 4096,
+          "total_tokens": 6060
+        },
+        "started_at": "2026-09-28T05:44:04.222546Z",
+        "completed_at": "2026-09-28T05:44:20.209386Z",
+        "duration_seconds": 15.986994395992951
+      },
+      {
+        "attempt": 2,
+        "candidate_id": "9341219a-62d4-4d5c-8f45-5e49746b16af",
+        "previous_failure_id": "38a29f10-8355-4162-a9de-787710a912fe",
+        "provider": "nebius_token_factory",
+        "model": "nvidia/Nemotron-3_5-Lightning",
+        "candidate_digest": "4e4b420d55a0ba87949cc4694de6cb95771e5dfdb6cb1866f6b41fc6c8bd46a6",
+        "candidate_field_digests": {},
+        "candidate_field_lengths": {},
+        "candidate_artifact": null,
+        "provider_call": "PASS",
+        "candidate_decode": "FAIL",
+        "candidate_validation": "NOT_RUN",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "a144f8b5-6dc6-441e-8a0d-ce23d8305558",
+          "repair_id": null,
+          "candidate_id": "9341219a-62d4-4d5c-8f45-5e49746b16af",
+          "candidate_digest": "4e4b420d55a0ba87949cc4694de6cb95771e5dfdb6cb1866f6b41fc6c8bd46a6",
+          "candidate_field_digests": {},
+          "candidate_field_lengths": {},
+          "trace_id": "0aad24eb-b6ef-4f32-b16a-46da843c5d60",
+          "boundary_id": "99d67d3a-c9fb-46bc-b9d4-3a5e8c268f1d",
+          "evidence_ids": [
+            "5d6869c4-4994-4fbe-ae47-a8c1e6d5b20b",
+            "bc359e97-7aae-4cf5-8ed5-33ee7ba28a83",
+            "29906e16-1b3b-44d4-ad98-a293d900b622",
+            "3a4658e2-79cb-4f9b-bc65-58b6ba22ee4a",
+            "cc287bcc-a7fc-4b50-8e73-6a14d1f46030"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "nvidia/Nemotron-3_5-Lightning",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "candidate_decode_failed",
+          "message": "Provider content did not decode as a repair candidate.",
+          "diagnostics": {
+            "error_type": "GeneratedRepairCandidateJSONError",
+            "detail": "Provider output is not valid GeneratedRepairCandidate JSON (length=14290, line=1, column=2186, code_point=U+0022, window=\"message,+                )\\\", \\\"regression_test\\\": \\\"import re, textwrap, sys, io, types, contextlib,\")"
+          },
+          "attempt": 2,
+          "created_at": "2026-09-28T05:44:37.635642Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-08a64087",
+          "returned_model": "nvidia/Nemotron-3_5-Lightning",
+          "finish_reason": "length",
+          "content_type": "str",
+          "content_length": 14290,
+          "prompt_tokens": 2409,
+          "completion_tokens": 4096,
+          "total_tokens": 6505
+        },
+        "started_at": "2026-09-28T05:44:20.255186Z",
+        "completed_at": "2026-09-28T05:44:37.635670Z",
+        "duration_seconds": 17.380622121010674
+      },
+      {
+        "attempt": 3,
+        "candidate_id": "959c9d25-1bf5-4cb0-8e12-5681395d6cf2",
+        "previous_failure_id": "a144f8b5-6dc6-441e-8a0d-ce23d8305558",
+        "provider": "nebius_token_factory",
+        "model": "nvidia/Nemotron-3_5-Lightning",
+        "candidate_digest": "5c04e58979a026f161a89ce30b9e423c543a9e6dbfc595ff58442437e2ac5b00",
+        "candidate_field_digests": {
+          "rationale": "62afd0f8f1b5e2a65afa4e1b5f6bd892d780269e3a80b30e91b87aa482ef9101",
+          "patch": "281a230bb296d69782fe7fc0c4872ddd8eceed5b7d57b4e118c64e4c5bfeb8c7",
+          "regression_test": "d76e60b68220f88b00fcd9265a925f2545a0bb660690995c0ddc24e39f64aacf",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 408,
+          "patch": 235,
+          "regression_test": 666,
+          "optional_policy_artifact": 0
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v1",
+          "candidate_id": "959c9d25-1bf5-4cb0-8e12-5681395d6cf2",
+          "attempt_number": 3,
+          "path": "final-live-m4-20260928T054320Z.candidates/attempt-03-959c9d25-1bf5-4cb0-8e12-5681395d6cf2.json",
+          "candidate_digest": "5c04e58979a026f161a89ce30b9e423c543a9e6dbfc595ff58442437e2ac5b00",
+          "integrity_digest": "d619c3d3cb79d8c1f7c24fc5ce992d49bd04d137d9d4e99692628abc343964ab"
+        },
+        "provider_call": "PASS",
+        "candidate_decode": "PASS",
+        "candidate_validation": "FAIL",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "b772f4a1-0f84-41ea-bb2e-3f70471162d5",
+          "repair_id": null,
+          "candidate_id": "959c9d25-1bf5-4cb0-8e12-5681395d6cf2",
+          "candidate_digest": "5c04e58979a026f161a89ce30b9e423c543a9e6dbfc595ff58442437e2ac5b00",
+          "candidate_field_digests": {
+            "rationale": "62afd0f8f1b5e2a65afa4e1b5f6bd892d780269e3a80b30e91b87aa482ef9101",
+            "patch": "281a230bb296d69782fe7fc0c4872ddd8eceed5b7d57b4e118c64e4c5bfeb8c7",
+            "regression_test": "d76e60b68220f88b00fcd9265a925f2545a0bb660690995c0ddc24e39f64aacf",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 408,
+            "patch": 235,
+            "regression_test": 666,
+            "optional_policy_artifact": 0
+          },
+          "trace_id": "0aad24eb-b6ef-4f32-b16a-46da843c5d60",
+          "boundary_id": "99d67d3a-c9fb-46bc-b9d4-3a5e8c268f1d",
+          "evidence_ids": [
+            "5d6869c4-4994-4fbe-ae47-a8c1e6d5b20b",
+            "bc359e97-7aae-4cf5-8ed5-33ee7ba28a83",
+            "29906e16-1b3b-44d4-ad98-a293d900b622",
+            "3a4658e2-79cb-4f9b-bc65-58b6ba22ee4a",
+            "cc287bcc-a7fc-4b50-8e73-6a14d1f46030"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "nvidia/Nemotron-3_5-Lightning",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "patch_format",
+          "failure_code": "invalid_unified_diff",
+          "message": "Candidate patch is not a single-target unified diff.",
+          "diagnostics": {
+            "header_count": 1,
+            "has_hunk": false
+          },
+          "attempt": 3,
+          "created_at": "2026-09-28T05:44:39.792204Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-9f2c4642",
+          "returned_model": "nvidia/Nemotron-3_5-Lightning",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1396,
+          "prompt_tokens": 2405,
+          "completion_tokens": 347,
+          "total_tokens": 2752
+        },
+        "started_at": "2026-09-28T05:44:37.676136Z",
+        "completed_at": "2026-09-28T05:44:39.801701Z",
+        "duration_seconds": 2.1256089939997764
+      }
+    ],
+    "final_failure": {
+      "failure_id": "b772f4a1-0f84-41ea-bb2e-3f70471162d5",
+      "repair_id": null,
+      "candidate_id": "959c9d25-1bf5-4cb0-8e12-5681395d6cf2",
+      "candidate_digest": "5c04e58979a026f161a89ce30b9e423c543a9e6dbfc595ff58442437e2ac5b00",
+      "candidate_field_digests": {
+        "rationale": "62afd0f8f1b5e2a65afa4e1b5f6bd892d780269e3a80b30e91b87aa482ef9101",
+        "patch": "281a230bb296d69782fe7fc0c4872ddd8eceed5b7d57b4e118c64e4c5bfeb8c7",
+        "regression_test": "d76e60b68220f88b00fcd9265a925f2545a0bb660690995c0ddc24e39f64aacf",
+        "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "candidate_field_lengths": {
+        "rationale": 408,
+        "patch": 235,
+        "regression_test": 666,
+        "optional_policy_artifact": 0
+      },
+      "trace_id": "0aad24eb-b6ef-4f32-b16a-46da843c5d60",
+      "boundary_id": "99d67d3a-c9fb-46bc-b9d4-3a5e8c268f1d",
+      "evidence_ids": [
+        "5d6869c4-4994-4fbe-ae47-a8c1e6d5b20b",
+        "bc359e97-7aae-4cf5-8ed5-33ee7ba28a83",
+        "29906e16-1b3b-44d4-ad98-a293d900b622",
+        "3a4658e2-79cb-4f9b-bc65-58b6ba22ee4a",
+        "cc287bcc-a7fc-4b50-8e73-6a14d1f46030"
+      ],
+      "provider": "nebius_token_factory",
+      "model": "nvidia/Nemotron-3_5-Lightning",
+      "target_path": "victims/clean_customer_support/agent.py",
+      "target_symbol": "CleanCustomerSupportAgent.chat",
+      "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+      "failure_type": "indirect_prompt_injection",
+      "failure_stage": "patch_format",
+      "failure_code": "invalid_unified_diff",
+      "message": "Candidate patch is not a single-target unified diff.",
+      "diagnostics": {
+        "header_count": 1,
+        "has_hunk": false
+      },
+      "attempt": 3,
+      "created_at": "2026-09-28T05:44:39.792204Z"
+    },
+    "safe_failure_summary": "patch_format: Candidate patch is not a single-target unified diff.",
+    "started_at": "2026-09-28T05:44:04.203143Z",
+    "completed_at": "2026-09-28T05:44:39.819279Z",
+    "duration_seconds": 35.61581356599345,
+    "original_repository_unchanged": true
+  },
+  "result_digest": "6906964684d1d83124946d0aa22958687bed8da4df84681cce44ce3aae4fdc4d"
+}

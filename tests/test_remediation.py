@@ -18,7 +18,8 @@ from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import (
     GeneratedRepairCandidate, RegressionTestSyntaxError, RemediationRequest,
-    RepairContext, RepairFailure, RepairProposal,
+    RepairContext, RepairFailure, RepairProposal, StructuredRegressionTest,
+    StructuredSourceEdit,
 )
 from gauntlet.remediation.parsing import (
     GeneratedRepairCandidateJSONError, parse_generated_repair_candidate,
@@ -94,7 +95,7 @@ async def test_source_location_must_match_boundary_evidence():
 def test_generated_repair_schema_contains_only_model_owned_content():
     schema = GeneratedRepairCandidate.model_json_schema()
     generated_fields = {
-        "rationale", "patch", "regression_test", "optional_policy_artifact",
+        "rationale", "source_edit", "regression_test", "optional_policy_artifact",
     }
     trusted_fields = {
         "repair_id", "trace_id", "boundary_id", "evidence_ids", "provider",
@@ -109,14 +110,24 @@ def test_generated_repair_schema_contains_only_model_owned_content():
 def valid_candidate(context, **changes):
     values = {
         "rationale": "Enforce the untrusted data boundary.",
-        "patch": (
-            f"--- a/{context.repository_relative_path}\n"
-            f"+++ b/{context.repository_relative_path}\n"
-            "@@ -1 +1 @@\n-old\n+new\n"
+        "source_edit": StructuredSourceEdit(
+            target_path=context.repository_relative_path,
+            target_symbol=context.target_symbol,
+            source_hash=context.source_hash,
+            start_line=2,
+            delete_line_count=0,
+            expected_original_lines=[],
+            replacement_lines=["        # model-proposed boundary marker"],
         ),
-        "regression_test": "def test_security_boundary():\n    assert True\n",
+        "regression_test": StructuredRegressionTest(lines=[
+            "def test_security_boundary():", "    assert True",
+        ]),
         "optional_policy_artifact": None,
     }
+    if isinstance(changes.get("regression_test"), str):
+        changes["regression_test"] = StructuredRegressionTest(
+            lines=changes["regression_test"].splitlines()
+        )
     values.update(changes)
     return GeneratedRepairCandidate(**values)
 
@@ -131,15 +142,15 @@ async def test_observed_malformed_python_decodes_then_becomes_repair_failure_wit
 
     raw = valid_candidate(context, regression_test=malformed).model_dump_json()
     candidate = parse_generated_repair_candidate(raw)
-    assert candidate.regression_test == malformed
-    result = validate_candidate(candidate, trusted)
+    assert candidate.regression_test.lines == [malformed]
+    result = validate_candidate(candidate, trusted, ROOT)
 
     assert isinstance(result, RepairFailure)
     assert result.failure_stage == "regression_syntax"
     assert result.failure_code == "invalid_python"
     assert result.diagnostics["line"] == 1
     assert result.diagnostics["offset"] == 21
-    assert result.diagnostics["source_length"] == len(malformed)
+    assert result.diagnostics["source_length"] == len(malformed) + 1
     assert isinstance(UUID(result.failure_id), UUID)
     assert isinstance(UUID(result.candidate_id), UUID)
     assert result.trace_id == context.trace_id
@@ -155,7 +166,8 @@ async def test_candidate_validator_classifies_structure_and_patch_failures_in_or
     trusted = remediation_request(trace, context, FakeRemediationProvider()).repair_context
 
     missing_test = validate_candidate(
-        valid_candidate(context, regression_test="def helper():\n    assert True\n"), trusted
+        valid_candidate(context, regression_test="def helper():\n    assert True\n"),
+        trusted, ROOT,
     )
     assert isinstance(missing_test, RepairFailure)
     assert (missing_test.failure_stage, missing_test.failure_code) == (
@@ -164,7 +176,7 @@ async def test_candidate_validator_classifies_structure_and_patch_failures_in_or
 
     missing_assertion = validate_candidate(
         valid_candidate(context, regression_test="def test_boundary():\n    return True\n"),
-        trusted,
+        trusted, ROOT,
     )
     assert isinstance(missing_assertion, RepairFailure)
     assert (missing_assertion.failure_stage, missing_assertion.failure_code) == (
@@ -172,11 +184,13 @@ async def test_candidate_validator_classifies_structure_and_patch_failures_in_or
     )
 
     malformed_patch = validate_candidate(
-        valid_candidate(context, patch="this is not a diff"), trusted
+        valid_candidate(context, source_edit=valid_candidate(context).source_edit.model_copy(
+            update={"start_line": 100_000}
+        )), trusted, ROOT,
     )
     assert isinstance(malformed_patch, RepairFailure)
     assert (malformed_patch.failure_stage, malformed_patch.failure_code) == (
-        "patch_format", "invalid_unified_diff",
+        "patch_authorization", "edit_range_outside_symbol",
     )
 
 
@@ -188,7 +202,7 @@ async def test_candidate_validator_rejects_empty_semantic_content(changes, code)
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     trusted = remediation_request(trace, context, FakeRemediationProvider()).repair_context
-    result = validate_candidate(valid_candidate(context, **changes), trusted)
+    result = validate_candidate(valid_candidate(context, **changes), trusted, ROOT)
     assert isinstance(result, RepairFailure)
     assert result.failure_stage == "candidate_validation"
     assert result.failure_code == code
@@ -205,19 +219,17 @@ async def test_repair_failure_serialization_is_bounded_redacted_and_secret_free(
             f"API_KEY='{secret}'\n\timport pytestimport refrom unittest.mock import patch"
         ),
     )
-    result = validate_candidate(candidate, trusted)
+    result = validate_candidate(candidate, trusted, ROOT)
     serialized = result.model_dump_json()
 
     assert isinstance(result, RepairFailure)
     assert secret not in serialized
     assert "[REDACTED]" in serialized
-    assert candidate.regression_test not in serialized
+    assert secret not in serialized
     assert set(result.candidate_field_digests) == {
-        "rationale", "patch", "regression_test", "optional_policy_artifact",
+        "rationale", "source_edit", "regression_test", "optional_policy_artifact",
     }
-    assert result.candidate_field_lengths["regression_test"] == len(
-        candidate.regression_test
-    )
+    assert result.candidate_field_lengths["regression_test"] > 0
     assert len(result.diagnostics["window"]) <= 110
 
 
@@ -264,11 +276,16 @@ class MutatingProvider(FakeRemediationProvider):
         body = json.loads(await super().generate(request))
         if self.remove:
             body.pop(self.remove, None)
-        body.update(self.replace)
+        replacement = dict(self.replace)
+        if isinstance(replacement.get("regression_test"), str):
+            replacement["regression_test"] = {
+                "lines": replacement["regression_test"].splitlines()
+            }
+        body.update(replacement)
         return json.dumps(body)
 
 
-@pytest.mark.parametrize("field", ["patch", "regression_test"])
+@pytest.mark.parametrize("field", ["source_edit", "regression_test"])
 async def test_missing_patch_or_generated_regression_test_is_rejected(field):
     trace = await attack_trace()
     with pytest.raises(ValidationError):
@@ -277,7 +294,7 @@ async def test_missing_patch_or_generated_regression_test_is_rejected(field):
         )
 
 
-@pytest.mark.parametrize("raw", ["not-json", "{}", '{"patch": 7}'])
+@pytest.mark.parametrize("raw", ["not-json", "{}", '{"source_edit": 7}'])
 def test_malformed_provider_output_is_rejected_by_strict_schema(raw):
     with pytest.raises((ValidationError, ValueError)):
         GeneratedRepairCandidate.model_validate_json(raw)
@@ -301,17 +318,25 @@ async def test_model_cannot_supply_or_override_trusted_provenance():
 
 async def test_invalid_patch_target_and_non_executable_test_become_repair_failures():
     trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    source_edit = valid_candidate(context).source_edit
     unauthorized = await generate_repair_proposal(
         trace.model_dump_json(), ROOT,
-        MutatingProvider(replace={"patch": "--- a/other.py\n+++ b/other.py\n@@ -1 +1 @@\n-x\n+y\n"}),
+        MutatingProvider(replace={
+            "source_edit": source_edit.model_copy(
+                update={"target_path": "other.py"}
+            ).model_dump(mode="json")
+        }),
     )
     assert isinstance(unauthorized, RepairFailure)
     assert unauthorized.failure_stage == "patch_authorization"
-    assert unauthorized.failure_code == "unauthorized_patch_target"
+    assert unauthorized.failure_code == "unauthorized_edit_target"
 
     missing_test = await generate_repair_proposal(
         trace.model_dump_json(), ROOT,
-        MutatingProvider(replace={"regression_test": "def helper():\n    return True\n"}),
+        MutatingProvider(replace={
+            "regression_test": {"lines": ["def helper():", "    return True"]}
+        }),
     )
     assert isinstance(missing_test, RepairFailure)
     assert missing_test.failure_stage == "regression_structure"
@@ -682,14 +707,19 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
         "only the supplied execution evidence", "Modify only the authorized target",
         "Preserve legitimate behavior", "Do not remove or weaken tests",
         "Do not suppress the verifier", "remove the canary", "bypass or modify the attack harness",
-        "smallest reasonable repair", "actual Python regression test",
-        "standards-compliant JSON", "never place a literal control character",
-        "complete, executable, pytest-compatible", "syntactically valid Python statement",
-        "Preserve all required newlines and indentation", "JSON-escape source newlines",
-        "do not compress multiple Python statements", "parse successfully with Python",
-        "Put no Markdown fences", "prose inside regression_test", "Formatting example only",
+        "smallest", "reasonable repair", "actual Python regression test",
+        "standards-compliant JSON", "No source-edit or regression-test line-array element",
+        "complete, executable", "pytest-compatible Python 3 source",
+        "Every import must be syntactically valid",
+        "one physical source line per array element", "without line terminators",
+        "Put no Markdown fences", "prose in the line array",
         "remediation CONTENT, not trusted provenance", "Do not hard-code P100",
         "Do not disable all tool data", "deterministic test-double switch",
+        "below 2,000 output tokens", "Limit rationale", "source_edit to at most 120",
+        "regression_test to 40 lines", "Do not copy the complete target file",
+        "Do not add unused", "one contiguous structured source edit",
+        "one-based relative", "mechanically derive a unified diff",
+        "one focused test function",
     ):
         assert phrase in SYSTEM_PROMPT
     payload = json.loads(messages[1]["content"])
@@ -697,6 +727,23 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
     assert payload["source_context"]["evidence_ids"] == context.evidence_ids
     assert payload["repair_context"]["target_path"] == context.repository_relative_path
     assert payload["required_output_schema"]["additionalProperties"] is False
+
+
+def test_prompt_uses_structured_lines_without_patch_or_multiline_test_strings():
+    schema = GeneratedRepairCandidate.model_json_schema()
+    assert set(schema["properties"]) == {
+        "rationale", "source_edit", "regression_test", "optional_policy_artifact",
+    }
+    assert "source_edit.start_line" in SYSTEM_PROMPT
+    assert "expected_original_lines" in SYSTEM_PROMPT
+    assert "replacement_lines" in SYSTEM_PROMPT
+    assert "regression_test.lines" in SYSTEM_PROMPT
+    assert '"patch"' not in SYSTEM_PROMPT
+    for forbidden in (
+        "victims/clean_customer_support", "CleanCustomerSupportAgent",
+        "This product is excellent", "Kestrel-7749",
+    ):
+        assert forbidden not in SYSTEM_PROMPT
 
 
 async def test_nebius_content_extraction_preserves_inner_json_text_exactly():
@@ -804,17 +851,24 @@ def test_syntax_diagnostic_window_escapes_controls_and_redacts_credentials():
     assert "[REDACTED]" in str(diagnostic)
 
 
-async def test_multiline_patch_and_regression_test_accept_only_json_escaped_newlines():
+async def test_structured_lines_materialize_exact_patch_and_regression_newlines():
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
     request = remediation_request(trace, context, provider)
     raw = await provider.generate(request)
-    assert r"\n" in raw
-    proposal = parse_generated_repair_candidate(raw)
-    assert "\n" in proposal.patch
-    assert "\n" in proposal.regression_test
+    candidate = parse_generated_repair_candidate(raw)
+    assert all("\n" not in line and "\r" not in line
+               for line in candidate.source_edit.replacement_lines)
+    assert all("\n" not in line and "\r" not in line
+               for line in candidate.regression_test.lines)
+    proposal = validate_candidate(candidate, request.repair_context, ROOT)
+    assert isinstance(proposal, RepairProposal)
     assert proposal.patch.startswith("--- a/")
+    assert "\n+++ b/" in proposal.patch
+    assert proposal.regression_test == (
+        "\n".join(candidate.regression_test.lines) + "\n"
+    )
     compile(proposal.regression_test, "<generated-regression>", "exec")
 
 

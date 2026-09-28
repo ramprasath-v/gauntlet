@@ -68,14 +68,19 @@ complete contract can be tested without credentials. The separate
 `nebius-repair-smoke` command uses Nebius Token Factory with the configured
 NVIDIA Nemotron model. M3.1 does not apply the proposal or emit a proof verdict.
 
-The model generates only rationale, a single-target unified diff, executable
-Python regression-test source, and an optional policy artifact. Gauntlet owns
+The model generates only rationale, one bounded structured source edit,
+ordered Python regression-test source lines, and an optional policy artifact.
+The edit identifies the authorized path and symbol, trusted source hash,
+one-based range within the supplied symbol, exact expected source lines, and
+every replacement line. Gauntlet owns
 the repair UUID, trace/boundary/evidence IDs, provider/model identity, source
 hash, authorized target, failure type, validation, application, and
 verification. Candidate decoding checks only the exact fields, types, and size
 bounds, preserving malformed code as evidence. A deterministic validator then
-checks rationale, diff format, authorization, Python syntax, test structure,
-and the optional policy artifact in a fixed order. Success produces a
+checks rationale, target authorization, source identity, range and expected
+lines, Python test syntax and structure, and the optional policy artifact in a
+fixed order. It splices only the model-provided replacement lines, derives the
+unified diff mechanically, and joins regression lines with LF. Success produces a
 `RepairProposal` with trusted provenance; rejection produces a serializable
 `RepairFailure` with a safe diagnostic and content digests. Extra model fields
 are rejected, so the model cannot override provenance. The source file remains
@@ -123,7 +128,7 @@ only as a legacy compatibility path and is not used by M4.1.
 M4.2 adds bounded autonomous remediation retry. Attempt one uses the frozen M3
 prompt and strict `GeneratedRepairCandidate` schema. If deterministic candidate
 validation or M4.1 execution returns `RepairFailure`, attempts two and three
-send Lightning the same trusted source context, a bounded redacted view of the
+send the approved configured model the same trusted source context, a bounded redacted view of the
 prior candidate, and safe structured failure feedback. Each retry must return a
 new candidate digest, and every valid proposal starts in a fresh disposable
 workspace based on the original source. The run stops after at most three
@@ -140,9 +145,11 @@ is claimed yet.
 
 M4.2.1 adds safe candidate retention when a run evidence path is supplied.
 Every successfully decoded candidate receives a separate
-`gauntlet.repair-candidate.v1` artifact containing its four generated fields
-exactly as decoded plus trusted run/attempt/provenance metadata, candidate and
-field digests, and an independent integrity digest. The corresponding attempt
+`gauntlet.repair-candidate.v2` artifact containing its structured generated
+fields exactly as decoded plus any mechanically derived diff and regression
+source, trusted run/attempt/provenance metadata, candidate and derived-artifact
+digests, and an independent integrity digest. Version-one candidate artifacts
+remain loadable. The corresponding attempt
 in `gauntlet.repair-run.v1` stores a relative, integrity-bound reference rather
 than duplicating generated content. Failed validation does not suppress the
 artifact and does not promote it to a proposal. Provider envelopes, headers,
@@ -153,6 +160,25 @@ digest-only evidence could establish malformed diff structure but could not
 distinguish formatting failure from repair reasoning. Retention is not
 retroactive: the first live run's missing candidate bodies cannot be recovered.
 No prompt, candidate schema, validator, retry decision, or proof gate changed.
+
+The final M4 benchmark correction adds a separate clean repair target at
+`victims/clean_customer_support`. It preserves the same indirect prompt
+injection: external review data is embedded in privileged model instructions,
+allowing a poisoned review to disclose the synthetic canary. Unlike the frozen
+victim, the model-visible target contains no defensive switch, secure branch,
+sanitizer, expected patch, or canary-specific defense. Clean P100 reproduces
+the leak before repair; clean P200 requires benign review details to remain
+useful. M4 selects the matching fixed P100/P200 checks from the proposal's
+authorized target while retaining the same disposable-workspace executor and
+bounded M4.2 retry path.
+
+A known-good repair exists only inside the offline benchmark test module. It
+moves external review content out of privileged model instructions, passes the
+generated regression, unchanged P100, P200, and compatible suite, and produces
+`PatchProof(status="VERIFIED")`. Production orchestration never imports that
+fixture or includes it in `RepairContext`, prompts, or failure feedback. This
+proves benchmark solvability; it does not claim that Lightning has repaired the
+clean target. The next step requires a separately authorized final live run.
 
 `Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. Offline operation requires no credentials. Live M3 uses `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL`; `.env.example` records the approved Token Factory base URL and selected `nvidia/Nemotron-3_5-Lightning` model. The client uses the OpenAI-compatible `/v1/chat/completions` API with Bearer authentication and JSON-schema structured output. It accepts only approved Nebius HTTPS hosts and reads actual environment variables; it does not automatically load `.env` files.
 

@@ -20,6 +20,7 @@ ALLOWED_NEBIUS_HOSTS = {
 NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_HOST = "api.tokenfactory.us-central1.nebius.com"
 NEMOTRON_LIGHTNING_MODEL = "nvidia/Nemotron-3_5-Lightning"
+QWEN_35_MODEL = "Qwen/Qwen3.5-397B-A17B"
 REPAIR_SCHEMA_NAME = "repair_proposal"
 NEMOTRON_REASONING_ENABLED = "/think"
 NEMOTRON_REASONING_DISABLED = "/no_think"

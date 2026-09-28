@@ -23,7 +23,7 @@ class RetryRemediationProvider(RemediationProvider, Protocol):
         self,
         request: RemediationRequest,
         *,
-        previous_candidate: dict[str, str | None],
+        previous_candidate: dict[str, object],
         failure_feedback: dict[str, object],
     ) -> str: ...
 

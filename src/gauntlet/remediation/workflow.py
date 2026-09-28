@@ -39,7 +39,7 @@ async def generate_repair_proposal(
     )
     raw = await provider.generate(request)
     candidate = parse_generated_repair_candidate(raw)
-    result = validate_candidate(candidate, repair_context)
+    result = validate_candidate(candidate, repair_context, repository_root)
     if target.read_bytes() != before:
         raise RuntimeError("M3.1 provider flow modified repository source")
     return result

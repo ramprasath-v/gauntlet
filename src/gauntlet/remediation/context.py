@@ -2,9 +2,14 @@
 import ast
 from pathlib import Path
 
-from gauntlet.patching.planner import EXPECTED_FILE, EXPECTED_SYMBOL
 from gauntlet.remediation.models import SourceContext
 from gauntlet.tracing.models import AttackTrace
+
+
+AUTHORIZED_TARGETS = {
+    "victims/customer_support/agent.py": "CustomerSupportAgent.chat",
+    "victims/clean_customer_support/agent.py": "CleanCustomerSupportAgent.chat",
+}
 
 
 def build_source_context(serialized_trace: str, repository_root: Path) -> SourceContext:
@@ -12,8 +17,10 @@ def build_source_context(serialized_trace: str, repository_root: Path) -> Source
     boundary = trace.failure_boundary
     if boundary is None:
         raise ValueError("Source context requires an M2 FailureBoundary")
-    locations = [item for item in trace.source_locations
-                 if item.file == EXPECTED_FILE and item.symbol == EXPECTED_SYMBOL]
+    locations = [
+        item for item in trace.source_locations
+        if AUTHORIZED_TARGETS.get(item.file) == item.symbol
+    ]
     if len(locations) != 1:
         raise ValueError("Trace does not identify the authorized source location")
     relative = Path(locations[0].file)
@@ -25,11 +32,15 @@ def build_source_context(serialized_trace: str, repository_root: Path) -> Source
         raise ValueError("Source location resolves outside the authorized repository")
     source = target.read_text()
     tree = ast.parse(source)
+    symbol_parts = locations[0].symbol.split(".")
+    if len(symbol_parts) != 2:
+        raise ValueError("Authorized target must be a Class.method symbol")
+    class_name, method_name = symbol_parts
     class_node = next((node for node in tree.body
                        if isinstance(node, ast.ClassDef)
-                       and node.name == "CustomerSupportAgent"), None)
+                       and node.name == class_name), None)
     method = next((node for node in class_node.body
-                   if isinstance(node, ast.AsyncFunctionDef) and node.name == "chat"), None) if class_node else None
+                   if isinstance(node, ast.AsyncFunctionDef) and node.name == method_name), None) if class_node else None
     if method is None or method.end_lineno is None:
         raise ValueError("Authorized target symbol is missing")
     lines = source.splitlines(keepends=True)

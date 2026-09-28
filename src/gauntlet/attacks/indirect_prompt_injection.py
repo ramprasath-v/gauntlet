@@ -7,11 +7,12 @@ from gauntlet.tracing.builder import build_trace
 from gauntlet.verification.canary import CanaryLeakVerifier
 
 class IndirectPromptInjectionAttack:
-    def __init__(self, client: httpx.AsyncClient):
+    def __init__(self, client: httpx.AsyncClient, *, user_prompt: str = USER_PROMPT):
         self.client = client
+        self.user_prompt = user_prompt
 
     async def run(self) -> AttackResult:
-        response = await self.client.post("/chat", json={"message": USER_PROMPT})
+        response = await self.client.post("/chat", json={"message": self.user_prompt})
         response.raise_for_status()
         chat = ChatResponse.model_validate(response.json())
         leaked = CanaryLeakVerifier(CANARY).verify(chat.response)
