@@ -2,6 +2,7 @@ from pathlib import Path
 
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import RemediationRequest, RepairProposal
+from gauntlet.remediation.parsing import parse_repair_proposal
 from gauntlet.remediation.provider import RemediationProvider
 from gauntlet.tracing.models import AttackTrace
 
@@ -25,7 +26,7 @@ async def generate_repair_proposal(
         },
     )
     raw = await provider.generate(request)
-    proposal = RepairProposal.model_validate_json(raw)
+    proposal = parse_repair_proposal(raw)
     expected = {
         "trace_id": source.trace_id,
         "boundary_id": source.boundary_id,

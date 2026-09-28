@@ -321,3 +321,82 @@ Offline tests now compare the full serialized schema wrapper and reproduce the
 previous malformed envelope before proving the serializer adds both required
 fields. Full suite: 75 passed, 0 failed. A third single live smoke is justified
 to validate this exact correction, but no request was made in this task.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Third Single Live-Provider Smoke Validation
+
+Endpoint: `https://api.tokenfactory.us-central1.nebius.com/v1/chat/completions`.
+Model: `nvidia/nemotron-3-super-120b-a12b`.
+Request count: exactly 1; no retry.
+End-to-end latency: 14.38 seconds, including local P100 trace/context construction and the provider attempt.
+
+Result: `LIVE_PROVIDER_FAILED`. The corrected request envelope passed Nebius
+request validation and the API returned a model message through a successful
+HTTP response. The client does not currently retain the exact successful status
+code. Strict `RepairProposal` parsing then failed because the returned message
+was not valid JSON: Pydantic found an unescaped control character in a JSON
+string at line 1, column 1539.
+
+Validation results:
+- HTTP/API transport: PASS (successful response with model content; exact 2xx status not retained)
+- strict `RepairProposal` validation: FAIL (`json_invalid` due to an unescaped control character)
+- trace, boundary, evidence, target, source-hash, provider, and model provenance: NOT EVALUATED; no `RepairProposal` could be constructed
+- generated patch inspection/applicability: NOT EVALUATED; invalid JSON prevented safe artifact extraction
+- generated regression-test inspection/syntax: NOT EVALUATED; invalid JSON prevented safe artifact extraction
+- repository source digest unchanged: PASS
+
+Provider friction recorded at attempt time: Nebius accepted the named schema
+wrapper, but the returned content failed JSON-level validation due to an
+unescaped control character. The exact origin remained under investigation
+until the response extraction and parsing path could be analyzed offline.
+
+No patch was applied. No repository source was modified. M4.1 and M5 were not
+started. Per the smoke-test instruction, no retry was made.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Offline Response-Path and JSON-Control-Character Analysis
+
+Live request made during this investigation: No.
+
+Response-path finding: The Nebius client calls `response.json()` once to decode
+the outer OpenAI-compatible response envelope, selects
+`choices[0].message.content`, verifies that it is non-empty text, and returns
+that exact Python string. The remediation provider performs no concatenation,
+unescaping, newline conversion, or serialization. The workflow previously
+passed that exact string directly to `RepairProposal.model_validate_json()`.
+
+Offline nested-response tests preserve both correctly escaped inner JSON and an
+inner JSON string containing a literal newline byte-for-byte at the semantic
+`message.content` level. This establishes that Gauntlet did not transform a
+valid escaped inner JSON document into the malformed attempt #3 content. The
+literal control character was present in the semantic provider content after
+the required outer-envelope decode. The exact attempt #3 code point cannot be
+recovered because the raw content was not retained; the prior Pydantic error
+reported only the `U+0000`–`U+001F` class and its line/column.
+
+Hardening added:
+- A strict `parse_repair_proposal` boundary still uses Pydantic and never repairs malformed output.
+- JSON-level failures now report content length, parser line/column, the exact code point when available, and a bounded diagnostic window.
+- Diagnostic windows are JSON-escaped so literal controls cannot enter logs, and common credential fields plus bearer tokens are redacted.
+- Full provider content is not logged by default.
+- The remediation prompt now explicitly requires standards-compliant JSON, no Markdown fences, and JSON escapes for every newline, tab, carriage return, or other control character inside string values.
+
+Schema review: Multiline `patch`, `regression_test`, and optional policy values
+remain standards-compliant JSON strings when escaped correctly. A nested object
+would still carry a multiline string, while line arrays would change the M4
+artifact contract and could still contain improperly encoded controls. The
+smallest standards-compliant change is therefore the explicit escaping contract
+plus strict diagnostics; no schema field or validation rule was removed.
+
+Offline regression coverage now proves that literal newline/tab controls are
+rejected, correctly escaped multiline diff and Python test strings are accepted,
+Nebius content extraction is exact, diagnostic windows escape and redact their
+content, and malformed output never creates a `RepairProposal`. Full suite: 79
+passed, 0 failed.
+
+Attempt #4 is justified to evaluate the clarified prompt and improved
+diagnostics, but no live request was made in this task.

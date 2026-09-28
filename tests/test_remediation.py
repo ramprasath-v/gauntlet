@@ -10,7 +10,8 @@ from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import NebiusAPIError, NebiusTokenFactoryClient
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
-from gauntlet.remediation.models import RepairProposal
+from gauntlet.remediation.models import RemediationRequest, RepairProposal
+from gauntlet.remediation.parsing import RepairProposalJSONError, parse_repair_proposal
 from gauntlet.remediation.prompt import SYSTEM_PROMPT, build_messages
 from gauntlet.remediation.workflow import generate_repair_proposal
 from victims.customer_support.app import create_app
@@ -260,7 +261,6 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
-    from gauntlet.remediation.models import RemediationRequest
     request = RemediationRequest(
         source_context=context, failure_type="indirect_prompt_injection",
         provider=provider.provider_name, model=provider.model_name,
@@ -273,9 +273,71 @@ async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
         "Preserve legitimate behavior", "Do not remove or weaken tests",
         "Do not suppress the verifier", "remove the canary", "bypass the attack harness",
         "smallest reasonable repair", "actual Python regression test",
+        "standards-compliant JSON", "never place a literal control character",
     ):
         assert phrase in SYSTEM_PROMPT
     payload = json.loads(messages[1]["content"])
     assert payload["source_context"]["source_text"] == context.source_text
     assert payload["source_context"]["evidence_ids"] == context.evidence_ids
     assert payload["required_output_schema"]["additionalProperties"] is False
+
+
+async def test_nebius_content_extraction_preserves_inner_json_text_exactly():
+    correctly_escaped = r'{"patch":"line one\nline two"}'
+    literal_newline = '{"patch":"line one\nline two"}'
+    outputs = [correctly_escaped, literal_newline]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": outputs.pop(0)}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+    assert await client.complete([{"role": "user", "content": "test"}]) == correctly_escaped
+    assert await client.complete([{"role": "user", "content": "test"}]) == literal_newline
+
+
+async def test_multiline_patch_and_regression_test_accept_only_json_escaped_newlines():
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    provider = FakeRemediationProvider()
+    request = RemediationRequest(
+        source_context=context, failure_type="indirect_prompt_injection",
+        provider=provider.provider_name, model=provider.model_name,
+        evidence_summary={"verdict": trace.verdict},
+    )
+    raw = await provider.generate(request)
+    assert r"\n" in raw
+    proposal = parse_repair_proposal(raw)
+    assert "\n" in proposal.patch
+    assert "\n" in proposal.regression_test
+    assert proposal.patch.startswith("--- a/")
+    compile(proposal.regression_test, "<generated-regression>", "exec")
+
+
+def test_literal_control_character_is_rejected_with_escaped_bounded_diagnostic():
+    raw = '{"patch":"line one\nline two","authorization":"Bearer top-secret"}'
+    with pytest.raises(RepairProposalJSONError) as raised:
+        parse_repair_proposal(raw)
+    error = raised.value
+    assert error.code_point == "U+000A"
+    assert error.line == 1
+    assert error.column == 19
+    assert error.content_length == len(raw)
+    assert r"\n" in error.diagnostic_window
+    assert "\n" not in error.diagnostic_window
+    assert "top-secret" not in str(error)
+    assert "[REDACTED]" in str(error)
+
+
+def test_malformed_provider_output_never_creates_repair_proposal():
+    malformed = '{"patch":"literal\ttab"}'
+    proposal = None
+    with pytest.raises(RepairProposalJSONError) as raised:
+        proposal = parse_repair_proposal(malformed)
+    assert raised.value.code_point == "U+0009"
+    assert proposal is None
