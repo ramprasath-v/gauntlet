@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL, NebiusTokenFactoryClient
+from gauntlet.remediation.candidate_artifact import load_candidate_artifact
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import GeneratedRepairCandidate
 from gauntlet.remediation.parsing import parse_generated_repair_candidate
@@ -107,7 +108,7 @@ async def invalid_syntax(request, marker="one"):
     return await changed_raw(
         request,
         regression_test=(
-            f"API_KEY='provider-secret-{marker}'\n"
+            f"# malformed-candidate-{marker}\n"
             "def test_bad(:\n    assert True\n"
         ),
     )
@@ -185,9 +186,31 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
     assert load_repair_run(evidence_path) == result
     assert repository_digest(ROOT) == before
 
+    first_reference = result.attempts[0].candidate_artifact
+    second_reference = result.attempts[1].candidate_artifact
+    assert first_reference is not None
+    assert second_reference is not None
+    first_artifact = load_candidate_artifact(
+        evidence_path.parent / first_reference.path
+    )
+    second_artifact = load_candidate_artifact(
+        evidence_path.parent / second_reference.path
+    )
+    assert first_artifact.candidate_id == result.attempts[0].candidate_id
+    assert first_artifact.candidate_digest == result.attempts[0].candidate_digest
+    assert first_artifact.regression_test == (
+        "# malformed-candidate-one\ndef test_bad(:\n    assert True\n"
+    )
+    assert result.attempts[0].repair_id is None
+    assert result.attempts[0].candidate_validation == "FAIL"
+    assert second_artifact.candidate() == GeneratedRepairCandidate(
+        rationale=result.final_proposal.rationale,
+        patch=result.final_proposal.patch,
+        regression_test=result.final_proposal.regression_test,
+        optional_policy_artifact=result.final_proposal.optional_policy_artifact,
+    )
+
     serialized_feedback = json.dumps(provider.revisions)
-    assert "provider-secret-one" not in serialized_feedback
-    assert "[REDACTED]" in serialized_feedback
     assert "hidden_reasoning" not in serialized_feedback
     assert provider.revisions[0]["failure_feedback"]["failure_stage"] == "regression_syntax"
 

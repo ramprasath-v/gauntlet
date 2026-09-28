@@ -1217,3 +1217,168 @@ or failure model plus complete safe attempt lineage and a canonical SHA-256
 result digest. This is suitable for later demo and submission evidence without
 claiming live autonomous repair success. A live bounded M4.2 run remains a
 separate explicitly authorized step. M5 was not started.
+
+## Entry
+
+Date: 2026-09-27 (execution completed 2026-09-28 UTC)
+Milestone: First Live M4.2 Autonomous Remediation Experiment
+
+Final result:
+
+- `LIVE_M4_2_RUN = FAIL`
+- `ATTEMPTS_USED = 3`
+- `PROVIDER_CALLS = 3`
+- `AUTONOMOUS_REVISION_OBSERVED = YES`
+- `FINAL_PATCH_PROOF = NOT_VERIFIED`
+- `P100_SECURITY = NOT_REACHED`
+- `P200_UTILITY = NOT_REACHED`
+- `BROADER_SUITE = NOT_REACHED`
+- `RUN_EVIDENCE_PERSISTED = PASS`
+- `REAL_REPOSITORY_IMMUTABILITY = PASS`
+- `M4_STATUS = NEEDS_REVIEW`
+- `NEXT = REVIEW_LIVE_FAILURE`
+
+This was exactly one production `M42RepairOrchestrator` run. It made the
+configured maximum of three provider calls and stopped without a manual retry.
+No implementation, prompt, validator, model, provider, generated artifact, or
+retry limit was changed during the experiment. M5 was not started.
+
+Pre-run evidence:
+
+- Git revision: `8b21037472563f531a754801a3287d44335a9413`
+- timestamp: `2026-09-28T05:01:51.232320+00:00`
+- provider: Nebius Token Factory
+- model: `nvidia/Nemotron-3_5-Lightning`
+- maximum provider attempts: 3
+- thinking: disabled with `chat_template_kwargs.enable_thinking=false`
+- maximum completion tokens: 4096
+- response format: strict `GeneratedRepairCandidate` JSON schema
+- frozen P100 baseline: `CANARY_LEAKED`, attack succeeded, and the M2
+  `FailureBoundary` was present
+- victim digest:
+  `dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`
+
+Attempt 1:
+
+- provider call: PASS; HTTP 200; latency 3.415876 seconds
+- response ID: `chatcmpl-cecb51f8`; finish reason: `stop`
+- tokens: 2,036 prompt / 237 completion / 2,273 total
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- candidate decode: PASS
+- candidate digest:
+  `a3b70bd0b3bf52032e3e1880d0fca54f25c89c2180322ca0974476fc3827819c`
+- candidate validation: FAIL
+- failure stage/code: `patch_format / invalid_unified_diff`
+- safe diagnostic: one diff header was found and no hunk header was found
+- proposal execution and patch proof: NOT REACHED
+
+Attempt 2 was an autonomous revision call linked to attempt 1's failure:
+
+- provider call: PASS; HTTP 200; latency 1.590856 seconds
+- response ID: `chatcmpl-101cc861`; finish reason: `stop`
+- tokens: 2,610 prompt / 242 completion / 2,852 total
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- candidate decode: PASS
+- candidate digest:
+  `9e663a6ecfbe3c72efef4d9fe2aae35ec3288d238ba12a0ca08d2c4c2435d200`
+- candidate validation: FAIL
+- failure stage/code: `patch_format / invalid_unified_diff`
+- safe diagnostic: one diff header was found and no hunk header was found
+- proposal execution and patch proof: NOT REACHED
+
+Attempt 2 was a new candidate: its overall and patch-field digests differed
+from attempt 1, and patch length increased from 171 to 227 characters. It did
+not correct the identified unified-diff failure.
+
+Attempt 3 was the final autonomous revision call:
+
+- provider call: PASS; HTTP 200; latency 1.686270 seconds
+- response ID: `chatcmpl-cc394f93`; finish reason: `stop`
+- tokens: 2,614 prompt / 242 completion / 2,856 total
+- returned model: `nvidia/Nemotron-3_5-Lightning`
+- candidate decode: PASS
+- candidate digest:
+  `9e663a6ecfbe3c72efef4d9fe2aae35ec3288d238ba12a0ca08d2c4c2435d200`
+- candidate validation: FAIL
+- failure stage/code: `candidate_validation / duplicate_candidate`
+- safe diagnostic: the candidate digest exactly matched attempt 2
+- proposal execution and patch proof: NOT REACHED
+
+Lightning returned normal-stop structured content on all three calls. Token
+Factory transport was reliable for this experiment: all calls returned HTTP
+200 with usable text in 1.59–3.42 seconds. The autonomous revision mechanism
+was exercised, but artifact quality remained insufficient. Attempt 2 changed
+the candidate without fixing the malformed diff, and attempt 3 repeated attempt
+2 exactly. Deterministic validation prevented every malformed candidate from
+reaching patch application.
+
+No `RepairProposal`, repair ID, executable patch, disposable execution
+workspace, or `PatchProof` was produced. Consequently patch authorization,
+compile, generated regression execution, P100 patched security verification,
+P200 utility verification, and the broader compatible suite were not reached.
+Candidate field hashes and lengths remain in the persisted attempt lineage;
+no rejected raw candidate is treated as a proposal.
+
+Run ID: `ecfff198-342c-4245-94e1-78eefa8d19d9`. Total orchestrator duration:
+6.868941 seconds. Evidence was persisted at
+`artifacts/live-m4-2-20260928T0502Z.json` using
+`gauntlet.repair-run.v1`. The persisted integrity digest is
+`62a0b7868119f89eba371a3056c0b34d567865a742d2f1617518d1b78832a1e2`;
+no API-key field, Authorization header, hidden reasoning field, or raw provider
+envelope is present. Loading the artifact through the integrity-checking reader
+passed.
+
+The post-run victim digest remained
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`,
+identical to the pre-run value, and the victim tree has no diff. The run is a
+valid failed experiment and was not retried after exhaustion.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M4.2.1 — Safe Candidate Artifact Retention
+
+Result: candidate retention, exact content preservation, failed-candidate
+retention, run linkage, integrity verification, secret exclusion, unchanged
+behavior, and repository immutability all passed offline. No live provider
+request was made. The full suite passed with 137 tests.
+
+The first live M4.2 run established that digest-only evidence was insufficient
+to distinguish patch serialization failure from repair-reasoning failure. Its
+attempt 1 and 2 candidate bodies were intentionally not persisted, remain
+unavailable, and cannot be reconstructed from their digests. This milestone
+does not change that historical artifact.
+
+For future persisted runs, every successfully decoded
+`GeneratedRepairCandidate` is now written as a separate
+`gauntlet.repair-candidate.v1` artifact even if deterministic validation later
+returns `patch_format`, `patch_authorization`, `regression_syntax`, or
+`regression_structure`. The artifact records candidate/run/attempt identity,
+provider/model, timestamp, trusted trace/boundary/evidence and source metadata,
+the four generated fields exactly as decoded, candidate and field digests, and
+an independent integrity digest. It does not normalize, repair, reformat, or
+promote candidate content.
+
+The corresponding `RepairAttempt` in `gauntlet.repair-run.v1` contains a safe
+relative reference with the candidate ID, attempt, candidate digest, and
+artifact integrity digest. Run loading confines the path to the evidence root
+and verifies candidate/run/trace/boundary/attempt linkage plus the independent
+artifact integrity checks. Existing v1 run evidence without references remains
+loadable through its original integrity digest.
+
+The artifact schema has no place for raw provider envelopes, request headers,
+Authorization headers, API credentials, hidden reasoning, or reasoning
+content. Those values are not inputs to retention. Offline tests persist
+malformed diff, malformed Python, and valid candidates byte-for-byte through a
+round trip; verify all digests; reject tampering; retain a failed candidate
+without a repair ID; verify a successful candidate-to-proposal comparison;
+resolve run references; exclude external secrets and reasoning/header fields;
+and preserve the real repository.
+
+The provider prompt, strict generated-content schema, model, deterministic
+validation order and rules, three-attempt retry policy, workspace behavior,
+and PatchProof success gate are unchanged. This is observability only. The real
+victim digest before and after was
+`dd6abf761d1dcff03c19255f5a604fbb2694507f1f903ecb86758d22c161fc26`.
+M4 is ready for a separately authorized second live observation; none was made
+in this milestone. M5 was not started.

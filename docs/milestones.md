@@ -76,8 +76,9 @@ proof move to M4.1.
 
 ## M4 — Sandbox Repair Loop
 
-Status: READY FOR LIVE M4.2. M4.1 is frozen and M4.2 is COMPLETE OFFLINE. Full
-repository suite: 133 passed, 0 failed.
+Status: READY FOR SECOND LIVE OBSERVATION. M4.1 is frozen; M4.2 and the M4.2.1
+observability extension are COMPLETE OFFLINE. Full repository suite: 137
+passed, 0 failed.
 
 M4.1 executes exactly one existing validated `RepairProposal` in a fresh
 disposable allowlisted workspace. It verifies the M3 source-symbol hash, applies
@@ -100,7 +101,17 @@ decode, deterministic validation, proposal execution, and proof. Success
 requires the existing M4.1 `PatchProof(status="VERIFIED")`; three failures
 produce `RepairRunFailed` with no fourth call. Versioned run evidence is
 integrity checked. All provider behavior is covered by deterministic offline
-fakes and HTTP mock transport. No live M4.2 run has occurred.
+fakes and HTTP mock transport. The first live M4.2 observation is recorded
+below; no second observation has occurred.
+
+The first live M4.2 run subsequently exhausted three calls before proposal
+assembly: two malformed diff candidates followed by a duplicate. Digest-only
+attempt evidence could not establish whether the intended source repair was
+sound. M4.2.1 therefore retains each future decoded candidate exactly in a
+separate versioned, integrity-checked artifact and links it from the run. It
+retains both failed and successful candidates without changing their validation
+or execution outcome. The first run's candidate bodies were never persisted
+and cannot be recovered. No second live observation has been made.
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 

@@ -9,6 +9,10 @@ from typing import Callable
 from uuid import uuid4
 
 from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL
+from gauntlet.remediation.candidate_artifact import (
+    CANDIDATE_ARTIFACT_SCHEMA_VERSION, CandidateArtifactReference,
+    candidate_artifact_location, persist_candidate_artifact,
+)
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import (
     GeneratedRepairCandidate, RemediationRequest, RepairContext, RepairFailure,
@@ -348,6 +352,34 @@ class M42RepairOrchestrator:
                 field_digests = failure.candidate_field_digests
                 field_lengths = failure.candidate_field_lengths
             candidate_id = failure.candidate_id if failure else str(uuid4())
+            candidate_artifact = None
+            if candidate is not None and evidence_path is not None:
+                artifact_path, relative_artifact_path = candidate_artifact_location(
+                    evidence_path, attempt_number, candidate_id
+                )
+                artifact = persist_candidate_artifact(
+                    candidate,
+                    path=artifact_path,
+                    candidate_id=candidate_id,
+                    run_id=run_id,
+                    attempt_number=attempt_number,
+                    provider=self.provider.provider_name,
+                    model=self.provider.model_name,
+                    trace_id=request.repair_context.trace_id,
+                    boundary_id=request.repair_context.boundary_id,
+                    evidence_ids=request.repair_context.evidence_ids,
+                    target_path=request.repair_context.target_path,
+                    target_symbol=request.repair_context.target_symbol,
+                    source_hash=request.repair_context.source_hash,
+                )
+                candidate_artifact = CandidateArtifactReference(
+                    schema_version=CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+                    candidate_id=candidate_id,
+                    attempt_number=attempt_number,
+                    path=relative_artifact_path,
+                    candidate_digest=artifact.candidate_digest,
+                    integrity_digest=artifact.integrity_digest,
+                )
             workspace_id = (
                 proof.workspace_id if proof else
                 failure.diagnostics.get("workspace_id") if failure else None
@@ -364,6 +396,7 @@ class M42RepairOrchestrator:
                 candidate_digest=candidate_digest,
                 candidate_field_digests=field_digests,
                 candidate_field_lengths=field_lengths,
+                candidate_artifact=candidate_artifact,
                 provider_call=provider_call,
                 candidate_decode=candidate_decode,
                 candidate_validation=candidate_validation,

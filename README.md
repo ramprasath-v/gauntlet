@@ -138,6 +138,22 @@ authorization headers, hidden reasoning, and arbitrary provider envelopes.
 The offline implementation is complete; no successful live autonomous repair
 is claimed yet.
 
+M4.2.1 adds safe candidate retention when a run evidence path is supplied.
+Every successfully decoded candidate receives a separate
+`gauntlet.repair-candidate.v1` artifact containing its four generated fields
+exactly as decoded plus trusted run/attempt/provenance metadata, candidate and
+field digests, and an independent integrity digest. The corresponding attempt
+in `gauntlet.repair-run.v1` stores a relative, integrity-bound reference rather
+than duplicating generated content. Failed validation does not suppress the
+artifact and does not promote it to a proposal. Provider envelopes, headers,
+credentials, and reasoning fields never enter this artifact model.
+
+This retention was added after the first live autonomous run showed that
+digest-only evidence could establish malformed diff structure but could not
+distinguish formatting failure from repair reasoning. Retention is not
+retroactive: the first live run's missing candidate bodies cannot be recovered.
+No prompt, candidate schema, validator, retry decision, or proof gate changed.
+
 `Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. Offline operation requires no credentials. Live M3 uses `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL`; `.env.example` records the approved Token Factory base URL and selected `nvidia/Nemotron-3_5-Lightning` model. The client uses the OpenAI-compatible `/v1/chat/completions` API with Bearer authentication and JSON-schema structured output. It accepts only approved Nebius HTTPS hosts and reads actual environment variables; it does not automatically load `.env` files.
 
 The victim lives in the source repository and is run from the repository root. Only the Gauntlet package is installed. See [architecture](docs/architecture.md), [milestones](docs/milestones.md), and [build diary](docs/nebius-build-diary.md).

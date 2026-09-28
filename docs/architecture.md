@@ -166,3 +166,32 @@ and bounded command evidence may be retained for review, while API keys,
 authorization headers, hidden reasoning, and raw provider envelopes are not.
 The real repository digest is checked across the complete run. This milestone
 is verified offline only; a live bounded run requires separate authorization.
+
+## M4.2.1 — Safe Candidate Artifact Retention
+
+When M4.2 receives a run-evidence path, each successfully decoded
+`GeneratedRepairCandidate` is written independently as
+`gauntlet.repair-candidate.v1`, including candidates that later fail diff,
+authorization, Python, or test-structure validation. Its rationale, patch,
+regression test, and optional policy artifact are serialized without
+normalization or repair. Loading reconstructs those four fields and verifies
+the candidate digest, every field digest, and an integrity digest over the
+complete artifact metadata and content.
+
+The candidate artifact adds only trusted run ID, attempt number,
+provider/model, timestamp, trace/boundary/evidence IDs, target identity, and
+source hash. It has no fields for provider envelopes, request or Authorization
+headers, credentials, reasoning, or reasoning content. The API key is confined
+to the transport and is never an artifact input.
+
+Each `RepairAttempt` may contain a relative `CandidateArtifactReference` with
+the candidate ID, attempt, candidate digest, and artifact integrity digest.
+Loading run evidence resolves paths beneath the run-evidence directory, loads
+each candidate independently, and checks run, trace, boundary, attempt, ID, and
+digest linkage. Older v1 run artifacts without candidate references remain
+loadable; their omitted content is not reconstructable.
+
+Candidate retention occurs after decoding and does not participate in
+deterministic candidate validation, proposal assembly, retry selection, M4.1
+execution, or proof. **GeneratedRepairCandidate != RepairProposal != Applied
+patch != PatchProof.**
