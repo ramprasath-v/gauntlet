@@ -134,6 +134,7 @@ async def test_invalid_patch_target_and_non_executable_test_are_rejected():
 
 async def test_nebius_transport_uses_documented_chat_schema_contract():
     observed = {}
+    schema = RepairProposal.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         observed["url"] = str(request.url)
@@ -151,7 +152,7 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
     client = NebiusTokenFactoryClient(config, transport=httpx.MockTransport(handler))
     content = await client.complete(
         [{"role": "user", "content": "test"}],
-        response_schema={"type": "object", "properties": {}},
+        response_schema=schema,
     )
     assert content == '{"ok": true}'
     assert observed["url"].endswith("/v1/chat/completions")
@@ -161,7 +162,43 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
         "messages": [{"role": "user", "content": "test"}],
         "response_format": {
             "type": "json_schema",
-            "json_schema": {"type": "object", "properties": {}},
+            "json_schema": {
+                "name": "repair_proposal",
+                "schema": schema,
+            },
+        },
+    }
+
+
+async def test_nebius_serializer_wraps_schema_rejected_by_previous_live_attempt():
+    schema = RepairProposal.model_json_schema()
+    malformed_previous_envelope = {
+        "type": "json_schema",
+        "json_schema": schema,
+    }
+    assert "name" not in malformed_previous_envelope["json_schema"]
+    assert "schema" not in malformed_previous_envelope["json_schema"]
+    observed = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.update(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"ok": true}'}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+    await client.complete(
+        [{"role": "user", "content": "test"}], response_schema=schema
+    )
+    assert observed["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "repair_proposal",
+            "schema": schema,
         },
     }
 

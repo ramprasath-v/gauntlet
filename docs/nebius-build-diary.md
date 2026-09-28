@@ -223,7 +223,7 @@ Live request made during this investigation: No.
 Observed facts:
 - The one earlier live smoke used `https://api.tokenfactory.nebius.com/v1` with `nvidia/nemotron-3-super-120b-a12b` and returned HTTP 422.
 - The current official Nemotron-3-Super cookbook uses `https://api.tokenfactory.us-central1.nebius.com/v1/` for that exact model.
-- Nebius's structured-output documentation shows `response_format.type=json_schema` with a Pydantic-generated schema supplied directly as `response_format.json_schema`, which matches Gauntlet's envelope.
+- Nebius's structured-output page includes a direct Pydantic-schema example, while its complete valid-schema example uses a named `name`/`schema` wrapper. Attempt #2's provider response resolved that ambiguity for this endpoint by explicitly requiring the wrapper.
 - Gauntlet's prior request added `temperature: 0`; the cited Nemotron quickstart and structured-output example omit that optional field.
 - The generated `RepairProposal` schema is valid JSON Schema and contains `additionalProperties`, `anyOf`, `default`, `minItems`, `minLength`, `pattern`, `properties`, `required`, `title`, and `type` keywords.
 - The earlier client discarded the provider's validation response body after `raise_for_status`, so the server's exact 422 detail is unavailable.
@@ -235,14 +235,11 @@ Changes made offline:
 - Retained strict JSON-schema output; there is no unstructured fallback and `RepairProposal` validation was not weakened.
 - Added bounded provider-error body capture with recursive credential/header redaction and truncation at 4,000 characters.
 
-Root-cause assessment: The endpoint/model mismatch is the strongest offline
-hypothesis and is directly supported by the model-specific cookbook. It cannot
-be proven from the previous run because the 422 body was lost. The documented
-structured-output envelope is not a likely cause. Unsupported individual schema
-keywords or an optional request parameter remain unconfirmed possibilities;
-the documentation reviewed does not identify any of the emitted keywords as
-unsupported. The next authorized live response will preserve Nebius validation
-details if the request is still rejected.
+Root-cause assessment at that time: The endpoint/model mismatch was the
+strongest offline hypothesis because the first 422 body was lost. Attempt #2
+later disproved that hypothesis and conclusively identified the missing
+`json_schema.name` and `json_schema.schema` wrapper fields. No provider response
+identified an unsupported schema keyword or model-parameter problem.
 
 Offline verification: The exact serialized request now contains only `model`,
 `messages`, and `response_format` at the top level; targets the regional
@@ -250,3 +247,77 @@ Offline verification: The exact serialized request now contains only `model`,
 cover exact serialization, structured-output shape, regional endpoint
 enforcement, HTTP 422 detail preservation, and credential redaction. Full suite:
 74 passed, 0 failed.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Second Single Live-Provider Smoke Validation
+
+Endpoint: `https://api.tokenfactory.us-central1.nebius.com/v1/chat/completions`.
+Model: `nvidia/nemotron-3-super-120b-a12b`.
+Request count: exactly 1; no retry.
+End-to-end latency: 3.43 seconds, including local P100 trace/context construction and the provider attempt.
+
+Result: `LIVE_PROVIDER_FAILED`. Nebius returned HTTP 422 and no completion or
+`RepairProposal` output.
+
+Sanitized provider validation detail:
+- location: `body.response_format.json_schema.name`; error: `Field required`
+- location: `body.response_format.json_schema.schema`; error: `Field required`
+
+Observed cause: This endpoint expects `response_format.json_schema` to be a
+wrapper containing at least `name` and `schema`. Gauntlet sent the raw Pydantic
+schema directly in `json_schema`, so request validation failed before model
+generation. This conclusion comes directly from the captured Nebius response
+and is not a hypothesis about model behavior or schema keyword support.
+
+Validation results:
+- HTTP/API success: FAIL (`422 Unprocessable Entity`)
+- strict `RepairProposal` validation: NOT EVALUATED; no proposal returned
+- trace, boundary, evidence, target, source-hash, provider, and model provenance: NOT EVALUATED; no proposal returned
+- patch applicability: NOT EVALUATED; no patch returned
+- regression-test Python syntax: NOT EVALUATED; no test returned
+- repository source digest unchanged: PASS
+
+No patch was applied. No repository source was modified. M4.1 and M5 were not
+started. Per the smoke-test instruction, no provider changes and no retry were
+made after this response.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Offline Structured-Output Envelope Correction
+
+Live request made during this correction: No.
+
+Attempt #2 established conclusively that the regional endpoint accepted the
+request far enough to validate its structured-output contract, then rejected
+the malformed `json_schema` envelope. Nebius returned two precise validation
+errors: `response_format.json_schema.name` was required and
+`response_format.json_schema.schema` was required. This proves the 422 was
+caused by Gauntlet sending the raw Pydantic schema directly, not by use of the
+regional endpoint.
+
+The serializer now emits:
+
+```json
+{
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "repair_proposal",
+      "schema": "<complete RepairProposal JSON schema>"
+    }
+  }
+}
+```
+
+The complete `RepairProposal.model_json_schema()` remains unchanged inside the
+`schema` field. Strict model validation, regional endpoint enforcement,
+sanitized error preservation, credential redaction, disabled redirects, and
+disabled environment proxies remain enabled. There is no plain-JSON fallback.
+
+Offline tests now compare the full serialized schema wrapper and reproduce the
+previous malformed envelope before proving the serializer adds both required
+fields. Full suite: 75 passed, 0 failed. A third single live smoke is justified
+to validate this exact correction, but no request was made in this task.

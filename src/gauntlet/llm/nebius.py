@@ -17,6 +17,7 @@ ALLOWED_NEBIUS_HOSTS = {
 }
 NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_HOST = "api.tokenfactory.us-central1.nebius.com"
+REPAIR_SCHEMA_NAME = "repair_proposal"
 MAX_ERROR_BODY_CHARS = 4_000
 
 
@@ -93,7 +94,10 @@ class NebiusTokenFactoryClient:
         if response_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": response_schema,
+                "json_schema": {
+                    "name": REPAIR_SCHEMA_NAME,
+                    "schema": response_schema,
+                },
             }
         async with httpx.AsyncClient(
             base_url=(self.config.base_url or "").rstrip("/") + "/",
