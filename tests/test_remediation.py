@@ -17,16 +17,24 @@ from gauntlet.llm.nebius import (
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, RegressionTestSyntaxError, RemediationRequest,
+    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    RegressionTestSyntaxError, RemediationRequest,
     RepairContext, RepairFailure, RepairProposal, StructuredRegressionTest,
-    StructuredSourceEdit,
+    StructuredSourceEdit, combine_repair_candidate,
 )
 from gauntlet.remediation.parsing import (
-    GeneratedRepairCandidateJSONError, parse_generated_repair_candidate,
+    GeneratedEditCandidateJSONError, GeneratedRepairCandidateJSONError,
+    GeneratedTestCandidateJSONError, parse_generated_edit_candidate,
+    parse_generated_repair_candidate, parse_generated_test_candidate,
 )
-from gauntlet.remediation.prompt import SYSTEM_PROMPT, build_messages
+from gauntlet.remediation.prompt import (
+    EDIT_SYSTEM_PROMPT, TEST_SYSTEM_PROMPT, build_edit_messages,
+    build_test_messages,
+)
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
-from gauntlet.remediation.validation import validate_candidate
+from gauntlet.remediation.validation import (
+    validate_candidate, validate_regression_test, validate_source_edit,
+)
 from gauntlet.remediation.workflow import generate_repair_proposal
 from victims.customer_support.app import create_app
 
@@ -90,6 +98,27 @@ async def test_source_location_must_match_boundary_evidence():
     serialized["source_locations"][0]["responsibility"] = "altered"
     with pytest.raises(ValueError, match="does not match the M2 boundary"):
         build_source_context(json.dumps(serialized), ROOT)
+
+
+def test_generated_edit_schema_contains_only_model_owned_content():
+    schema = GeneratedEditCandidate.model_json_schema()
+    generated_fields = {"rationale", "source_edit", "optional_policy_artifact"}
+    trusted_fields = {
+        "repair_id", "trace_id", "boundary_id", "evidence_ids", "provider",
+        "model", "target_path", "target_symbol", "source_hash", "failure_type",
+        "patch", "regression_test",
+    }
+    assert set(schema["properties"]) == generated_fields
+    assert set(schema["required"]) == generated_fields - {"optional_policy_artifact"}
+    assert schema["additionalProperties"] is False
+    assert trusted_fields.isdisjoint(schema["properties"])
+
+
+def test_generated_test_schema_contains_only_model_owned_content():
+    schema = GeneratedTestCandidate.model_json_schema()
+    assert set(schema["properties"]) == {"regression_test"}
+    assert set(schema["required"]) == {"regression_test"}
+    assert schema["additionalProperties"] is False
 
 
 def test_generated_repair_schema_contains_only_model_owned_content():
@@ -268,21 +297,36 @@ async def test_fake_provider_exercises_complete_m31_flow_without_source_changes(
 
 
 class MutatingProvider(FakeRemediationProvider):
+    EDIT_KEYS = {"rationale", "source_edit", "optional_policy_artifact"}
+    TEST_KEYS = {"regression_test"}
+
     def __init__(self, *, remove: str | None = None, replace: dict | None = None):
         self.remove = remove
         self.replace = replace or {}
 
-    async def generate(self, request):
-        body = json.loads(await super().generate(request))
-        if self.remove:
+    def _mutate(self, body, *, part_keys):
+        if self.remove and self.remove in body:
             body.pop(self.remove, None)
-        replacement = dict(self.replace)
+        replacement = {
+            key: value for key, value in self.replace.items()
+            if key in part_keys or key not in self.EDIT_KEYS | self.TEST_KEYS
+        }
         if isinstance(replacement.get("regression_test"), str):
             replacement["regression_test"] = {
                 "lines": replacement["regression_test"].splitlines()
             }
         body.update(replacement)
         return json.dumps(body)
+
+    async def generate_edit(self, request):
+        body = json.loads(await super().generate_edit(request))
+        return self._mutate(body, part_keys=self.EDIT_KEYS)
+
+    async def generate_test(self, request, *, derived_patch):
+        body = json.loads(
+            await super().generate_test(request, derived_patch=derived_patch)
+        )
+        return self._mutate(body, part_keys=self.TEST_KEYS)
 
 
 @pytest.mark.parametrize("field", ["source_edit", "regression_test"])
@@ -390,12 +434,16 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
 
 async def test_remediation_provider_serializes_no_think_and_bounded_output_without_schema_change():
     observed = {}
-    schema = GeneratedRepairCandidate.model_json_schema()
+    edit_schema = GeneratedEditCandidate.model_json_schema()
+    test_schema = GeneratedTestCandidate.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        observed.update(json.loads(request.content))
+        body = json.loads(request.content)
+        name = body["response_format"]["json_schema"]["name"]
+        observed[name] = body
+        content = payloads[name]
         return httpx.Response(200, json={
-            "choices": [{"message": {"content": '{"ok": true}'}}]
+            "choices": [{"message": {"content": content}}]
         })
 
     client = NebiusTokenFactoryClient(NebiusConfig(
@@ -407,27 +455,45 @@ async def test_remediation_provider_serializes_no_think_and_bounded_output_witho
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     request = remediation_request(trace, context, provider)
-
-    await provider.generate(request)
-
-    assert observed["messages"][0] == {
-        "role": "system", "content": "/no_think\n" + SYSTEM_PROMPT,
+    fake = FakeRemediationProvider()
+    payloads = {
+        "edit_candidate": await fake.generate_edit(request),
+        "test_candidate": await fake.generate_test(request, derived_patch="---"),
     }
-    assert observed["max_tokens"] == 4_096
-    assert observed["response_format"] == {
+
+    await provider.generate_edit(request)
+    await provider.generate_test(request, derived_patch="---")
+
+    assert observed["edit_candidate"]["messages"][0] == {
+        "role": "system", "content": "/no_think\n" + EDIT_SYSTEM_PROMPT,
+    }
+    assert observed["edit_candidate"]["max_tokens"] == 2_048
+    assert observed["edit_candidate"]["response_format"] == {
         "type": "json_schema",
-        "json_schema": {"name": "repair_proposal", "schema": schema},
+        "json_schema": {"name": "edit_candidate", "schema": edit_schema},
+    }
+    assert observed["test_candidate"]["messages"][0] == {
+        "role": "system", "content": "/no_think\n" + TEST_SYSTEM_PROMPT,
+    }
+    assert observed["test_candidate"]["max_tokens"] == 2_048
+    assert observed["test_candidate"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "test_candidate", "schema": test_schema},
     }
 
 
 async def test_lightning_provider_disables_thinking_without_no_think_directive():
     observed = {}
-    schema = GeneratedRepairCandidate.model_json_schema()
+    edit_schema = GeneratedEditCandidate.model_json_schema()
+    test_schema = GeneratedTestCandidate.model_json_schema()
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        observed.update(json.loads(request.content))
+        body = json.loads(request.content)
+        name = body["response_format"]["json_schema"]["name"]
+        observed[name] = body
+        content = payloads[name]
         return httpx.Response(200, json={
-            "choices": [{"message": {"content": '{"ok": true}'}}]
+            "choices": [{"message": {"content": content}}]
         })
 
     client = NebiusTokenFactoryClient(NebiusConfig(
@@ -439,27 +505,39 @@ async def test_lightning_provider_disables_thinking_without_no_think_directive()
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     request = remediation_request(trace, context, provider)
-
-    await provider.generate(request)
-
-    assert observed["model"] == NEMOTRON_LIGHTNING_MODEL
-    assert observed["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
-    assert not observed["messages"][0]["content"].startswith("/no_think")
-    assert observed["chat_template_kwargs"] == {"enable_thinking": False}
-    assert observed["max_tokens"] == 4_096
-    assert observed["response_format"] == {
-        "type": "json_schema",
-        "json_schema": {"name": "repair_proposal", "schema": schema},
+    fake = FakeRemediationProvider()
+    payloads = {
+        "edit_candidate": await fake.generate_edit(request),
+        "test_candidate": await fake.generate_test(request, derived_patch="---"),
     }
+
+    await provider.generate_edit(request)
+    await provider.generate_test(request, derived_patch="---")
+
+    for name, prompt, schema in (
+        ("edit_candidate", EDIT_SYSTEM_PROMPT, edit_schema),
+        ("test_candidate", TEST_SYSTEM_PROMPT, test_schema),
+    ):
+        body = observed[name]
+        assert body["model"] == NEMOTRON_LIGHTNING_MODEL
+        assert body["messages"][0] == {"role": "system", "content": prompt}
+        assert not body["messages"][0]["content"].startswith("/no_think")
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        assert body["max_tokens"] == 2_048
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": name, "schema": schema},
+        }
 
 
 async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
     observed = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        observed.update(json.loads(request.content))
+        body = json.loads(request.content)
+        observed[body["response_format"]["json_schema"]["name"]] = body
         return httpx.Response(200, json={
-            "choices": [{"message": {"content": '{"ok": true}'}}]
+            "choices": [{"message": {"content": payloads[body["response_format"]["json_schema"]["name"]]}}]
         })
 
     client = NebiusTokenFactoryClient(NebiusConfig(
@@ -471,12 +549,19 @@ async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     request = remediation_request(trace, context, provider)
+    fake = FakeRemediationProvider()
+    payloads = {
+        "edit_candidate": await fake.generate_edit(request),
+        "test_candidate": await fake.generate_test(request, derived_patch="---"),
+    }
 
-    await provider.generate(request)
+    await provider.generate_edit(request)
+    await provider.generate_test(request, derived_patch="---")
 
-    assert observed["messages"][0]["content"] == SYSTEM_PROMPT
-    assert "chat_template_kwargs" not in observed
-    assert "reasoning_effort" not in observed
+    assert observed["edit_candidate"]["messages"][0]["content"] == EDIT_SYSTEM_PROMPT
+    assert observed["test_candidate"]["messages"][0]["content"] == TEST_SYSTEM_PROMPT
+    assert "chat_template_kwargs" not in observed["edit_candidate"]
+    assert "reasoning_effort" not in observed["edit_candidate"]
 
 
 async def test_lightning_rejects_reasoning_enabled_for_remediation():
@@ -696,54 +781,84 @@ def test_nebius_transport_requires_explicit_environment_configuration():
         NebiusTokenFactoryClient(NebiusConfig())
 
 
-async def test_prompt_contains_defensive_contract_and_bounded_artifacts():
+async def test_edit_prompt_contains_defensive_contract_and_bounded_artifacts():
     trace = await attack_trace()
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
     request = remediation_request(trace, context, provider)
-    messages = build_messages(request)
+    messages = build_edit_messages(request)
+    assert messages[0] == {"role": "system", "content": EDIT_SYSTEM_PROMPT}
     for phrase in (
         "authorized defensive benchmark", "synthetic local victim",
         "only the supplied execution evidence", "Modify only the authorized target",
         "Preserve legitimate behavior", "Do not remove or weaken tests",
         "Do not suppress the verifier", "remove the canary", "bypass or modify the attack harness",
-        "smallest", "reasonable repair", "actual Python regression test",
-        "standards-compliant JSON", "No source-edit or regression-test line-array element",
-        "complete, executable", "pytest-compatible Python 3 source",
-        "Every import must be syntactically valid",
-        "one physical source line per array element", "without line terminators",
-        "Put no Markdown fences", "prose in the line array",
+        "smallest", "reasonable repair",
+        "standards-compliant JSON",
         "remediation CONTENT, not trusted provenance", "Do not hard-code P100",
         "Do not disable all tool data", "deterministic test-double switch",
-        "below 2,000 output tokens", "Limit rationale", "source_edit to at most 120",
-        "regression_test to 40 lines", "Do not copy the complete target file",
-        "Do not add unused", "one contiguous structured source edit",
-        "one-based relative", "mechanically derive a unified diff",
-        "one focused test function",
+        "below 800 output tokens", "Limit rationale",
+        "at most 120", "Do not copy the complete target file",
+        "one contiguous structured source edit",
+        "mechanically derive a unified diff",
+        "No source-edit line-array element",
     ):
-        assert phrase in SYSTEM_PROMPT
+        assert phrase in EDIT_SYSTEM_PROMPT
     payload = json.loads(messages[1]["content"])
     assert payload["source_context"]["source_text"] == context.source_text
     assert payload["source_context"]["evidence_ids"] == context.evidence_ids
     assert payload["repair_context"]["target_path"] == context.repository_relative_path
     assert payload["required_output_schema"]["additionalProperties"] is False
+    assert "derived_patch" not in payload
 
 
-def test_prompt_uses_structured_lines_without_patch_or_multiline_test_strings():
-    schema = GeneratedRepairCandidate.model_json_schema()
-    assert set(schema["properties"]) == {
-        "rationale", "source_edit", "regression_test", "optional_policy_artifact",
+async def test_test_prompt_contains_defensive_contract_and_bounded_artifacts():
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    provider = FakeRemediationProvider()
+    request = remediation_request(trace, context, provider)
+    messages = build_test_messages(request, derived_patch="--- a/x\n+++ b/x\n")
+    assert messages[0] == {"role": "system", "content": TEST_SYSTEM_PROMPT}
+    for phrase in (
+        "authorized defensive benchmark",
+        "trusted, already-validated source repair",
+        "Write a test that proves the security property",
+        "Do not re-propose a repair", "Do not modify the\npatch",
+        "Do not suppress the\nverifier",
+        "standards-compliant JSON",
+        "complete, executable", "pytest-compatible Python 3 source",
+        "one physical source line per array element", "without line terminators",
+        "at most 40 lines", "Use only imports exercised by the test",
+        "one focused test\nfunction",
+        "Put no Markdown fences", "Do not add unused",
+        "below 1,200 output tokens",
+        "No line-array element may contain LF or CR",
+    ):
+        assert phrase in TEST_SYSTEM_PROMPT
+    payload = json.loads(messages[1]["content"])
+    assert payload["derived_patch"] == "--- a/x\n+++ b/x\n"
+    assert payload["required_output_schema"]["additionalProperties"] is False
+
+
+def test_prompts_use_structured_lines_without_patch_or_multiline_test_strings():
+    edit_schema = GeneratedEditCandidate.model_json_schema()
+    assert set(edit_schema["properties"]) == {
+        "rationale", "source_edit", "optional_policy_artifact",
     }
-    assert "source_edit.start_line" in SYSTEM_PROMPT
-    assert "expected_original_lines" in SYSTEM_PROMPT
-    assert "replacement_lines" in SYSTEM_PROMPT
-    assert "regression_test.lines" in SYSTEM_PROMPT
-    assert '"patch"' not in SYSTEM_PROMPT
+    assert "source_edit.start_line" in EDIT_SYSTEM_PROMPT
+    assert "expected_original_lines" in EDIT_SYSTEM_PROMPT
+    assert "replacement_lines" in EDIT_SYSTEM_PROMPT
+    assert '"patch"' not in EDIT_SYSTEM_PROMPT
+    test_schema = GeneratedTestCandidate.model_json_schema()
+    assert set(test_schema["properties"]) == {"regression_test"}
+    assert "regression_test.lines" in TEST_SYSTEM_PROMPT
+    assert '"patch"' not in TEST_SYSTEM_PROMPT
     for forbidden in (
         "victims/clean_customer_support", "CleanCustomerSupportAgent",
         "This product is excellent", "Kestrel-7749",
     ):
-        assert forbidden not in SYSTEM_PROMPT
+        assert forbidden not in EDIT_SYSTEM_PROMPT
+        assert forbidden not in TEST_SYSTEM_PROMPT
 
 
 async def test_nebius_content_extraction_preserves_inner_json_text_exactly():
@@ -856,18 +971,28 @@ async def test_structured_lines_materialize_exact_patch_and_regression_newlines(
     context = build_source_context(trace.model_dump_json(), ROOT)
     provider = FakeRemediationProvider()
     request = remediation_request(trace, context, provider)
-    raw = await provider.generate(request)
-    candidate = parse_generated_repair_candidate(raw)
+    edit_raw = await provider.generate_edit(request)
+    edit_candidate = parse_generated_edit_candidate(edit_raw)
     assert all("\n" not in line and "\r" not in line
-               for line in candidate.source_edit.replacement_lines)
+               for line in edit_candidate.source_edit.replacement_lines)
+    materialized = {}
+    derived = validate_source_edit(
+        edit_candidate, request.repair_context, ROOT, materialized_output=materialized
+    )
+    assert isinstance(derived, str)
+    test_raw = await provider.generate_test(
+        request, derived_patch=materialized["patch"]
+    )
+    test_candidate = parse_generated_test_candidate(test_raw)
     assert all("\n" not in line and "\r" not in line
-               for line in candidate.regression_test.lines)
+               for line in test_candidate.regression_test.lines)
+    candidate = combine_repair_candidate(edit_candidate, test_candidate)
     proposal = validate_candidate(candidate, request.repair_context, ROOT)
     assert isinstance(proposal, RepairProposal)
     assert proposal.patch.startswith("--- a/")
     assert "\n+++ b/" in proposal.patch
     assert proposal.regression_test == (
-        "\n".join(candidate.regression_test.lines) + "\n"
+        "\n".join(test_candidate.regression_test.lines) + "\n"
     )
     compile(proposal.regression_test, "<generated-regression>", "exec")
 

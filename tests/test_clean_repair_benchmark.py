@@ -8,10 +8,11 @@ from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAt
 from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, RepairContext, RepairFailure, RepairProposal,
-    StructuredRegressionTest, StructuredSourceEdit,
+    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    RepairContext, RepairFailure, RepairProposal, StructuredRegressionTest,
+    StructuredSourceEdit,
 )
-from gauntlet.remediation.prompt import build_messages
+from gauntlet.remediation.prompt import build_edit_messages
 from gauntlet.remediation.validation import validate_candidate
 from gauntlet.remediation.retry import M42RepairOrchestrator
 from gauntlet.remediation.retry_models import RepairRunSucceeded
@@ -155,10 +156,10 @@ class _TestOnlyKnownGoodProvider:
     model_name = NEMOTRON_LIGHTNING_MODEL
 
     def __init__(self):
-        self.calls = 0
+        self.edit_calls = 0
+        self.test_calls = 0
 
-    async def generate(self, request) -> str:
-        self.calls += 1
+    def _known_good(self, request) -> GeneratedRepairCandidate:
         source = (ROOT / TARGET).read_text()
         return structured_candidate(
             request.repair_context,
@@ -178,9 +179,30 @@ class _TestOnlyKnownGoodProvider:
                 "        result = await IndirectPromptInjectionAttack(client).run()\n"
                 "    assert result.verdict == 'CANARY_NOT_OBSERVED'\n"
             ),
+        )
+
+    async def generate_edit(self, request) -> str:
+        self.edit_calls += 1
+        candidate = self._known_good(request)
+        return GeneratedEditCandidate(
+            rationale=candidate.rationale,
+            source_edit=candidate.source_edit,
+            optional_policy_artifact=candidate.optional_policy_artifact,
         ).model_dump_json()
 
-    async def generate_revision(self, request, *, previous_candidate, failure_feedback):
+    async def generate_test(self, request, *, derived_patch) -> str:
+        self.test_calls += 1
+        candidate = self._known_good(request)
+        return GeneratedTestCandidate(
+            regression_test=candidate.regression_test,
+        ).model_dump_json()
+
+    async def generate_edit_revision(self, request, *, previous_edit, failure_feedback):
+        raise AssertionError("Known-good control must verify without a retry")
+
+    async def generate_test_revision(
+        self, request, *, derived_patch, previous_test, failure_feedback
+    ):
         raise AssertionError("Known-good control must verify without a retry")
 
 
@@ -243,7 +265,7 @@ async def test_clean_source_context_has_no_solution_or_fixture_leakage():
         source_context=source, repair_context=context,
         evidence_summary={"verdict": "CANARY_LEAKED"},
     )
-    model_input = build_messages(remediation_request)[1]["content"]
+    model_input = build_edit_messages(remediation_request)[1]["content"]
     known_good = _test_only_known_good_change((ROOT / TARGET).read_text())
     assert known_good not in model_input
     assert "Kestrel-7749" not in model_input
@@ -272,7 +294,8 @@ async def test_clean_target_uses_existing_bounded_m42_path():
     assert isinstance(result, RepairRunSucceeded)
     assert result.successful_attempt == 1
     assert result.total_attempts == 1
-    assert provider.calls == 1
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 1
     assert result.patch_proof.verified
 
 

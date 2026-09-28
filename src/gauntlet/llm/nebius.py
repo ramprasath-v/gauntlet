@@ -265,6 +265,7 @@ class NebiusTokenFactoryClient:
     async def complete(
         self, messages: Sequence[Mapping[str, str]], *,
         response_schema: dict[str, Any] | None = None,
+        schema_name: str | None = None,
         reasoning_directive: str | None = None,
         chat_template_kwargs: Mapping[str, bool] | None = None,
         max_tokens: int | None = None,
@@ -307,7 +308,7 @@ class NebiusTokenFactoryClient:
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": REPAIR_SCHEMA_NAME,
+                    "name": schema_name or REPAIR_SCHEMA_NAME,
                     "schema": response_schema,
                 },
             }

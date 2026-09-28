@@ -35,16 +35,21 @@ class RepairAttempt(StrictModel):
     candidate_field_digests: dict[str, str]
     candidate_field_lengths: dict[str, int]
     candidate_artifact: CandidateArtifactReference | None = None
-    provider_call: StepOutcome
-    candidate_decode: StepOutcome
-    candidate_validation: StepOutcome
+    edit_provider_call: StepOutcome
+    edit_decode: StepOutcome
+    edit_validation: StepOutcome
+    edit_reused: bool = False
+    test_provider_call: StepOutcome
+    test_decode: StepOutcome
+    test_validation: StepOutcome
     proposal_execution: StepOutcome
     patch_proof: StepOutcome
     repair_id: str | None = None
     failure: RepairFailure | None = None
     proof_id: str | None = None
     workspace_id: str | None = None
-    provider_completion: SafeProviderCompletion | None = None
+    edit_provider_completion: SafeProviderCompletion | None = None
+    test_provider_completion: SafeProviderCompletion | None = None
     started_at: datetime
     completed_at: datetime
     duration_seconds: float = Field(ge=0)
@@ -61,9 +66,10 @@ class RepairAttempt(StrictModel):
     @model_validator(mode="after")
     def coherent_outcome(self) -> "RepairAttempt":
         if self.patch_proof == "VERIFIED":
-            if (self.provider_call, self.candidate_decode,
-                    self.candidate_validation, self.proposal_execution) != (
-                "PASS", "PASS", "PASS", "PASS"
+            if (self.edit_provider_call, self.edit_decode, self.edit_validation,
+                    self.test_provider_call, self.test_decode,
+                    self.test_validation, self.proposal_execution) != (
+                "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS"
             ) or not self.proof_id or self.failure is not None:
                 raise ValueError("VERIFIED attempt requires complete successful lineage")
         elif self.failure is None:

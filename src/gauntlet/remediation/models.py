@@ -143,6 +143,41 @@ class GeneratedRepairCandidate(StrictModel):
     optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
 
 
+class GeneratedEditCandidate(StrictModel):
+    """Decoded provider content for the source-edit call.
+
+    Emitted by the first of the two remediation calls so the model produces
+    only the rationale and the bounded structured source edit. No patch or
+    Python semantics are implied until deterministic validation.
+    """
+
+    rationale: str = Field(max_length=8_000)
+    source_edit: StructuredSourceEdit
+    optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
+
+
+class GeneratedTestCandidate(StrictModel):
+    """Decoded provider content for the regression-test call.
+
+    Emitted by the second of the two remediation calls, after the source edit
+    has validated, so the model produces only the regression test lines.
+    """
+
+    regression_test: StructuredRegressionTest
+
+
+def combine_repair_candidate(
+    edit: GeneratedEditCandidate, test: GeneratedTestCandidate,
+) -> GeneratedRepairCandidate:
+    """Assemble the combined repair candidate from the two call outputs."""
+    return GeneratedRepairCandidate(
+        rationale=edit.rationale,
+        source_edit=edit.source_edit,
+        regression_test=test.regression_test,
+        optional_policy_artifact=edit.optional_policy_artifact,
+    )
+
+
 FailureStage = Literal[
     "candidate_validation",
     "source_identity",

@@ -13,9 +13,12 @@ from gauntlet.llm.nebius import (
 from gauntlet.remediation.candidate_artifact import load_candidate_artifact
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, StructuredRegressionTest, StructuredSourceEdit,
+    GeneratedEditCandidate, GeneratedTestCandidate, StructuredRegressionTest,
+    StructuredSourceEdit,
 )
-from gauntlet.remediation.parsing import parse_generated_repair_candidate
+from gauntlet.remediation.parsing import (
+    parse_generated_edit_candidate, parse_generated_test_candidate,
+)
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
 from gauntlet.remediation.retry import M42RepairOrchestrator
 from gauntlet.remediation.retry_models import (
@@ -43,20 +46,22 @@ class ScriptedRetryProvider:
     provider_name = "offline_scripted_provider"
     model_name = "nvidia/Nemotron-3_5-Lightning"
 
-    def __init__(self, outputs):
-        self.outputs = list(outputs)
-        self.calls = 0
-        self.revisions = []
+    def __init__(self, edit_outputs, test_outputs):
+        self.edit_outputs = list(edit_outputs)
+        self.test_outputs = list(test_outputs)
+        self.edit_calls = 0
+        self.test_calls = 0
+        self.edit_revisions = []
+        self.test_revisions = []
         self._metadata = None
 
-    async def _next(self, request):
-        output = self.outputs[self.calls]
-        self.calls += 1
+    async def _next(self, request, outputs, call_index):
+        output = outputs[call_index]
         if callable(output):
             output = await output(request)
         self._metadata = SafeProviderCompletion(
             http_status=200,
-            response_id=f"offline-{self.calls}",
+            response_id=f"offline-{call_index}",
             returned_model=self.model_name,
             finish_reason="stop",
             content_type="str",
@@ -67,17 +72,33 @@ class ScriptedRetryProvider:
         )
         return output
 
-    async def generate(self, request):
-        return await self._next(request)
+    async def generate_edit(self, request):
+        output = await self._next(request, self.edit_outputs, self.edit_calls)
+        self.edit_calls += 1
+        return output
 
-    async def generate_revision(
-        self, request, *, previous_candidate, failure_feedback
+    async def generate_test(self, request, *, derived_patch):
+        output = await self._next(request, self.test_outputs, self.test_calls)
+        self.test_calls += 1
+        return output
+
+    async def generate_edit_revision(
+        self, request, *, previous_edit, failure_feedback
     ):
-        self.revisions.append({
-            "previous_candidate": previous_candidate,
+        self.edit_revisions.append({
+            "previous_edit": previous_edit,
             "failure_feedback": failure_feedback,
         })
-        return await self._next(request)
+        return await self.generate_edit(request)
+
+    async def generate_test_revision(
+        self, request, *, derived_patch, previous_test, failure_feedback
+    ):
+        self.test_revisions.append({
+            "previous_test": previous_test,
+            "failure_feedback": failure_feedback,
+        })
+        return await self.generate_test(request, derived_patch=derived_patch)
 
     def safe_completion_metadata(self):
         return self._metadata
@@ -85,7 +106,7 @@ class ScriptedRetryProvider:
 
 @pytest.mark.parametrize("model", [NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL])
 def test_m42_accepts_approved_live_remediation_models(model):
-    provider = ScriptedRetryProvider([])
+    provider = ScriptedRetryProvider([], [])
     provider.model_name = model
 
     orchestrator = M42RepairOrchestrator(ROOT, provider)
@@ -94,32 +115,48 @@ def test_m42_accepts_approved_live_remediation_models(model):
 
 
 def test_m42_rejects_unapproved_provider_configuration():
-    provider = ScriptedRetryProvider([])
+    provider = ScriptedRetryProvider([], [])
     provider.model_name = "nvidia/nemotron-3-super-120b-a12b"
     with pytest.raises(ValueError, match="explicitly approved"):
         M42RepairOrchestrator(ROOT, provider)
 
 
-async def valid_raw(request) -> str:
-    return await FakeRemediationProvider().generate(request)
+async def valid_edit_raw(request) -> str:
+    return await FakeRemediationProvider().generate_edit(request)
 
 
-async def changed_raw(request, **changes) -> str:
-    candidate = parse_generated_repair_candidate(await valid_raw(request))
+async def valid_test_raw(request) -> str:
+    return await FakeRemediationProvider().generate_test(request, derived_patch="")
+
+
+async def changed_edit_raw(request, **changes) -> str:
+    edit = parse_generated_edit_candidate(await valid_edit_raw(request))
+    return edit.model_copy(update=changes).model_dump_json()
+
+
+async def changed_test_raw(request, **changes) -> str:
+    test = parse_generated_test_candidate(await valid_test_raw(request))
     if isinstance(changes.get("regression_test"), str):
         changes["regression_test"] = StructuredRegressionTest(
             lines=changes["regression_test"].splitlines()
         )
-    return candidate.model_copy(update=changes).model_dump_json()
+    return test.model_copy(update=changes).model_dump_json()
 
 
-async def invalid_syntax(request, marker="one"):
-    return await changed_raw(
+async def invalid_syntax_test(request, marker="one"):
+    return await changed_test_raw(
         request,
         regression_test=(
             f"# malformed-candidate-{marker}\n"
             "def test_bad(:\n    assert True\n"
         ),
+    )
+
+
+async def trivial_test_raw(request):
+    return await changed_test_raw(
+        request,
+        regression_test="def test_candidate_runs():\n    assert True\n",
     )
 
 
@@ -154,36 +191,37 @@ def edit_for_changed_source(request, changed: str) -> StructuredSourceEdit:
     )
 
 
-async def compile_failure(request):
+async def compile_failure_edit(request):
     source = (ROOT / TARGET).read_text()
     changed = source.replace(
         "    async def chat(self, message: str) -> ChatResponse:",
         "    async def chat(self, message: str) -> ChatResponse",
     )
-    return await changed_raw(request, source_edit=edit_for_changed_source(request, changed))
+    return await changed_edit_raw(
+        request, source_edit=edit_for_changed_source(request, changed)
+    )
 
 
-async def regression_failure(request):
-    return await changed_raw(
+async def regression_failure_test(request):
+    return await changed_test_raw(
         request,
         regression_test="def test_generated_repair():\n    assert False\n",
     )
 
 
-async def security_failure(request):
+async def security_failure_edit(request):
     source = (ROOT / TARGET).read_text()
     changed = source.replace(
         "    async def chat(self, message: str) -> ChatResponse:\n",
         "    async def chat(self, message: str) -> ChatResponse:\n"
         "        # candidate leaves the boundary vulnerable\n",
     )
-    return await changed_raw(
-        request, source_edit=edit_for_changed_source(request, changed),
-        regression_test="def test_candidate_runs():\n    assert True\n",
+    return await changed_edit_raw(
+        request, source_edit=edit_for_changed_source(request, changed)
     )
 
 
-async def utility_failure(request):
+async def utility_failure_edit(request):
     source = (ROOT / TARGET).read_text()
     changed = source.replace(
         "privileged_context=not self.enforce_tool_data_boundary,",
@@ -195,16 +233,18 @@ async def utility_failure(request):
         "review = search_reviews(product_id)",
         "review = None if product_id == \"P200\" else search_reviews(product_id)",
     )
-    return await changed_raw(
-        request, source_edit=edit_for_changed_source(request, changed),
-        regression_test="def test_candidate_runs():\n    assert True\n",
+    return await changed_edit_raw(
+        request, source_edit=edit_for_changed_source(request, changed)
     )
 
 
-async def test_validation_failure_retries_new_candidate_and_persists_verified_run(
+async def test_validation_failure_retries_test_only_and_persists_verified_run(
     serialized_trace, tmp_path
 ):
-    provider = ScriptedRetryProvider([invalid_syntax, valid_raw])
+    provider = ScriptedRetryProvider(
+        edit_outputs=[valid_edit_raw],
+        test_outputs=[invalid_syntax_test, valid_test_raw],
+    )
     evidence_path = tmp_path / "repair-run.json"
     before = repository_digest(ROOT)
 
@@ -214,10 +254,16 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
 
     assert isinstance(result, RepairRunSucceeded)
     assert result.successful_attempt == 2
-    assert provider.calls == 2
-    assert result.attempts[0].candidate_validation == "FAIL"
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 2
+    assert provider.edit_revisions == []
+    assert len(provider.test_revisions) == 1
+    assert result.attempts[0].test_validation == "FAIL"
+    assert result.attempts[0].edit_reused is False
     assert result.attempts[0].proposal_execution == "NOT_RUN"
-    assert result.attempts[1].candidate_validation == "PASS"
+    assert result.attempts[1].test_validation == "PASS"
+    assert result.attempts[1].edit_reused is True
+    assert result.attempts[1].edit_provider_call == "PASS"
     assert result.attempts[1].patch_proof == "VERIFIED"
     assert result.attempts[0].candidate_digest != result.attempts[1].candidate_digest
     assert result.attempts[1].previous_failure_id == result.attempts[0].failure.failure_id
@@ -245,7 +291,6 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
         "# malformed-candidate-one\ndef test_bad(:\n    assert True\n"
     )
     assert result.attempts[0].repair_id is None
-    assert result.attempts[0].candidate_validation == "FAIL"
     second_candidate = second_artifact.candidate()
     assert second_candidate.rationale == result.final_proposal.rationale
     assert "\n".join(second_candidate.regression_test.lines) + "\n" == (
@@ -254,28 +299,32 @@ async def test_validation_failure_retries_new_candidate_and_persists_verified_ru
     assert second_artifact.derived_patch == result.final_proposal.patch
     assert second_artifact.derived_regression_test == result.final_proposal.regression_test
 
-    serialized_feedback = json.dumps(provider.revisions)
+    serialized_feedback = json.dumps(provider.test_revisions)
     assert "hidden_reasoning" not in serialized_feedback
-    assert provider.revisions[0]["failure_feedback"]["failure_stage"] == "regression_syntax"
+    feedback = provider.test_revisions[0]["failure_feedback"]
+    assert feedback["failure_stage"] == "regression_syntax"
+    assert feedback["failed_call"] == "test"
 
 
 @pytest.mark.parametrize(
-    ("first_candidate", "stage"),
+    ("first_edit", "first_test", "stage", "failed_call"),
     [
-        (compile_failure, "compile"),
-        (regression_failure, "regression_execution"),
-        (security_failure, "security_test"),
-        (utility_failure, "utility_test"),
+        (compile_failure_edit, valid_test_raw, "compile", "edit"),
+        (valid_edit_raw, regression_failure_test, "regression_execution", "test"),
+        (security_failure_edit, trivial_test_raw, "security_test", "edit"),
+        (utility_failure_edit, trivial_test_raw, "utility_test", "edit"),
     ],
 )
 async def test_execution_failure_feedback_retries_from_fresh_workspace_to_proof(
-    serialized_trace, first_candidate, stage
+    serialized_trace, first_edit, first_test, stage, failed_call
 ):
-    provider = ScriptedRetryProvider([first_candidate, valid_raw])
+    provider = ScriptedRetryProvider(
+        edit_outputs=[first_edit, valid_edit_raw],
+        test_outputs=[first_test, valid_test_raw],
+    )
     result = await M42RepairOrchestrator(ROOT, provider).run(serialized_trace)
 
     assert isinstance(result, RepairRunSucceeded)
-    assert provider.calls == 2
     assert result.total_attempts == 2
     assert result.attempts[0].failure.failure_stage == stage
     assert result.attempts[0].proposal_execution == "FAIL"
@@ -284,29 +333,49 @@ async def test_execution_failure_feedback_retries_from_fresh_workspace_to_proof(
     assert result.attempts[0].workspace_id
     assert result.attempts[1].workspace_id
     assert result.attempts[0].workspace_id != result.attempts[1].workspace_id
-    feedback = provider.revisions[0]["failure_feedback"]
+    if failed_call == "edit":
+        assert provider.edit_calls == 2
+        assert provider.test_calls == 2
+        assert result.attempts[1].edit_reused is False
+        assert provider.test_revisions == []
+        revisions = provider.edit_revisions
+    else:
+        assert provider.edit_calls == 1
+        assert provider.test_calls == 2
+        assert result.attempts[1].edit_reused is True
+        assert provider.edit_revisions == []
+        revisions = provider.test_revisions
+    assert len(revisions) == 1
+    feedback = revisions[0]["failure_feedback"]
     assert feedback["failure_stage"] == stage
+    assert feedback["failed_call"] == failed_call
     assert feedback["previous_candidate_digest"] == result.attempts[0].candidate_digest
 
 
 async def test_three_failures_stop_without_attempt_four(serialized_trace, tmp_path):
     async def second(request):
-        return await invalid_syntax(request, "two")
+        return await invalid_syntax_test(request, "two")
 
     async def third(request):
-        return await invalid_syntax(request, "three")
+        return await invalid_syntax_test(request, "three")
 
-    provider = ScriptedRetryProvider([invalid_syntax, second, third])
+    provider = ScriptedRetryProvider(
+        edit_outputs=[valid_edit_raw],
+        test_outputs=[invalid_syntax_test, second, third],
+    )
     evidence_path = tmp_path / "failed-run.json"
     result = await M42RepairOrchestrator(ROOT, provider).run(
         serialized_trace, evidence_path=evidence_path
     )
 
     assert isinstance(result, RepairRunFailed)
-    assert provider.calls == 3
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 3
     assert result.total_attempts == 3
     assert len(result.attempts) == 3
-    assert len(provider.revisions) == 2
+    assert len(provider.test_revisions) == 2
+    assert provider.edit_revisions == []
+    assert all(item.edit_reused or item.attempt == 1 for item in result.attempts)
     assert len({item.candidate_digest for item in result.attempts}) == 3
     assert all(item.patch_proof != "VERIFIED" for item in result.attempts)
     assert result.final_failure == result.attempts[-1].failure
@@ -318,13 +387,17 @@ async def test_identical_retry_candidate_is_rejected_before_execution(
     serialized_trace
 ):
     async def same_invalid(request):
-        return await invalid_syntax(request)
+        return await invalid_syntax_test(request)
 
-    provider = ScriptedRetryProvider([invalid_syntax, same_invalid, valid_raw])
+    provider = ScriptedRetryProvider(
+        edit_outputs=[valid_edit_raw],
+        test_outputs=[invalid_syntax_test, same_invalid, valid_test_raw],
+    )
     result = await M42RepairOrchestrator(ROOT, provider).run(serialized_trace)
 
     assert isinstance(result, RepairRunSucceeded)
-    assert provider.calls == 3
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 3
     assert result.attempts[0].candidate_digest == result.attempts[1].candidate_digest
     assert result.attempts[1].failure.failure_code == "duplicate_candidate"
     assert result.attempts[1].proposal_execution == "NOT_RUN"
@@ -332,33 +405,54 @@ async def test_identical_retry_candidate_is_rejected_before_execution(
     assert result.attempts[2].patch_proof == "VERIFIED"
 
 
-async def test_attempt_one_success_makes_exactly_one_provider_call(serialized_trace):
-    provider = ScriptedRetryProvider([valid_raw])
+async def test_attempt_one_success_makes_exactly_two_provider_calls(serialized_trace):
+    provider = ScriptedRetryProvider(
+        edit_outputs=[valid_edit_raw], test_outputs=[valid_test_raw]
+    )
     result = await M42RepairOrchestrator(ROOT, provider).run(serialized_trace)
 
     assert isinstance(result, RepairRunSucceeded)
-    assert provider.calls == 1
-    assert provider.revisions == []
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 1
+    assert provider.edit_revisions == []
+    assert provider.test_revisions == []
     assert result.total_attempts == 1
-    assert result.attempts[0].provider_call == "PASS"
-    assert result.attempts[0].candidate_decode == "PASS"
-    assert result.attempts[0].candidate_validation == "PASS"
-    assert result.attempts[0].proposal_execution == "PASS"
-    assert result.attempts[0].patch_proof == "VERIFIED"
+    attempt = result.attempts[0]
+    assert attempt.edit_provider_call == "PASS"
+    assert attempt.edit_decode == "PASS"
+    assert attempt.edit_validation == "PASS"
+    assert attempt.edit_reused is False
+    assert attempt.test_provider_call == "PASS"
+    assert attempt.test_decode == "PASS"
+    assert attempt.test_validation == "PASS"
+    assert attempt.proposal_execution == "PASS"
+    assert attempt.patch_proof == "VERIFIED"
+    assert attempt.edit_provider_completion is not None
+    assert attempt.test_provider_completion is not None
 
 
-async def test_lightning_revision_keeps_frozen_schema_reasoning_and_token_contract(
+async def test_lightning_calls_keep_frozen_schema_reasoning_and_token_contract(
     serialized_trace
 ):
+    base_request = M42RepairOrchestrator(
+        ROOT, ScriptedRetryProvider([], [])
+    )._request(serialized_trace)
+    edit_payload = await FakeRemediationProvider().generate_edit(base_request)
+    test_payload = await FakeRemediationProvider().generate_test(
+        base_request, derived_patch="---"
+    )
     observed = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        observed.update(json.loads(request.content))
+        body = json.loads(request.content)
+        name = body["response_format"]["json_schema"]["name"]
+        observed[name] = body
+        content = edit_payload if name == "edit_candidate" else test_payload
         return httpx.Response(200, json={
-            "id": "offline-revision", "model": NEMOTRON_LIGHTNING_MODEL,
+            "id": "offline-call", "model": NEMOTRON_LIGHTNING_MODEL,
             "choices": [{
                 "index": 0, "finish_reason": "stop",
-                "message": {"role": "assistant", "content": "{}"},
+                "message": {"role": "assistant", "content": content},
             }],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         })
@@ -369,38 +463,40 @@ async def test_lightning_revision_keeps_frozen_schema_reasoning_and_token_contra
         model=NEMOTRON_LIGHTNING_MODEL,
     ), transport=httpx.MockTransport(handler))
     provider = NebiusNemotronRemediationProvider(client)
-    request = M42RepairOrchestrator(ROOT, ScriptedRetryProvider([]))._request(
-        serialized_trace
-    ).model_copy(update={
-        "repair_context": M42RepairOrchestrator(
-            ROOT, ScriptedRetryProvider([])
-        )._request(serialized_trace).repair_context.model_copy(update={
+    request = base_request.model_copy(update={
+        "repair_context": base_request.repair_context.model_copy(update={
             "provider": provider.provider_name, "model": provider.model_name,
         })
     })
 
-    await provider.generate_revision(
+    await provider.generate_edit(request)
+    await provider.generate_test(request, derived_patch="---")
+    await provider.generate_edit_revision(
         request,
-        previous_candidate={
-            "rationale": "old", "patch": "old", "regression_test": "old",
-            "optional_policy_artifact": None,
-        },
-        failure_feedback={"failure_stage": "patch_apply"},
+        previous_edit=json.loads(edit_payload),
+        failure_feedback={"failure_stage": "compile", "failure_code": "compile_error"},
     )
 
-    assert observed["model"] == NEMOTRON_LIGHTNING_MODEL
-    assert observed["chat_template_kwargs"] == {"enable_thinking": False}
-    assert observed["max_tokens"] == 4_096
-    assert observed["response_format"] == {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "repair_proposal",
-            "schema": GeneratedRepairCandidate.model_json_schema(),
-        },
-    }
-    revision = json.loads(observed["messages"][1]["content"])["revision"]
-    assert revision["previous_failure"]["failure_stage"] == "patch_apply"
-    assert "Produce a new revised candidate" in revision["instruction"]
+    for name, schema in (
+        ("edit_candidate", GeneratedEditCandidate),
+        ("test_candidate", GeneratedTestCandidate),
+    ):
+        body = observed[name]
+        assert body["model"] == NEMOTRON_LIGHTNING_MODEL
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+        assert body["max_tokens"] == 2_048
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "schema": schema.model_json_schema(),
+            },
+        }
+    revision = json.loads(
+        observed["edit_candidate"]["messages"][1]["content"]
+    )["revision"]
+    assert revision["previous_failure"]["failure_stage"] == "compile"
+    assert "Produce a new revised source edit" in revision["instruction"]
     assert "Correct only what is necessary" in revision["instruction"]
     assert "concise output budgets" in revision["instruction"]
 
@@ -408,7 +504,9 @@ async def test_lightning_revision_keeps_frozen_schema_reasoning_and_token_contra
 async def test_run_evidence_tamper_is_rejected(serialized_trace, tmp_path):
     path = tmp_path / "run.json"
     result = await M42RepairOrchestrator(
-        ROOT, ScriptedRetryProvider([valid_raw])
+        ROOT, ScriptedRetryProvider(
+            edit_outputs=[valid_edit_raw], test_outputs=[valid_test_raw]
+        )
     ).run(serialized_trace, evidence_path=path)
     assert isinstance(result, RepairRunSucceeded)
     path.write_text(path.read_text().replace('"status": "VERIFIED"', '"status": "FAILED"', 1))
