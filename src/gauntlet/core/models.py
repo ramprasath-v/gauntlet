@@ -1,6 +1,6 @@
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
-from gauntlet.tracing.models import ExecutionEvent
+from gauntlet.tracing.models import AttackTrace, ExecutionEvent
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4096)
@@ -25,3 +25,4 @@ class AttackResult(BaseModel):
     verdict: Literal["CANARY_LEAKED", "CANARY_NOT_OBSERVED"]
     evidence: dict[str, str]
     events: list[ExecutionEvent]
+    trace: AttackTrace | None = None

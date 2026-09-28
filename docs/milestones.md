@@ -2,11 +2,15 @@
 
 ## M1 — Exploit Confirmed
 
+Status: COMPLETE. Original 23 behavioral tests remain green.
+
 One vulnerable agent + indirect prompt injection + deterministic canary leak.
 
 Exit: CANARY_LEAKED reproducibly detected and tests pass.
 
 ## M2 — Evidence & Trace
+
+Status: COMPLETE. Full suite: 34 passed, 0 failed (23 original M1 + 11 M2). Real HTTP CLI attack executed successfully with ordered trace, linked evidence IDs, UNTRUSTED review metadata, and actionable file/symbol. Clean P200 produces no failure boundary.
 
 Turn structured events into an actionable attack path.
 

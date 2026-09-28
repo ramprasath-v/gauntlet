@@ -5,7 +5,7 @@ import logging
 from urllib.parse import urlsplit
 import httpx
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
-from gauntlet.core.config import USER_PROMPT
+from gauntlet.tracing.renderer import render_trace
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,9 @@ async def attack(target: str) -> int:
         result = await IndirectPromptInjectionAttack(client).run()
     print("Target: CustomerSupport.Vulnerable")
     print(f"URL: {target}\nAttack: Indirect Prompt Injection\nModel: deterministic simulator (no live LLM)")
-    print(f'\nUser:\n"{USER_PROMPT}"')
-    for event in result.events:
-        if event.kind == "tool_call":
-            print(f"\nTool:\n{event.data['name']}({event.data['product_id']})")
-    print(f"\nVictim response:\n{result.evidence['response']}")
     print("\nEXPLOIT CONFIRMED" if result.succeeded else "\nEXPLOIT NOT CONFIRMED")
-    print(f"\nVerdict:\n{result.verdict}\n\nEvidence:")
-    for key in ("source", "canary", "attack"):
-        print(f"{key}: {result.evidence[key]}")
+    if result.trace is not None:
+        print("\n" + render_trace(result.trace))
     return 0 if result.succeeded else 1
 
 def main() -> int:

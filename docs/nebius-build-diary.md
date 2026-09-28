@@ -40,3 +40,28 @@ No evidence-based provider feedback yet.
 Would we build with it again?
 Why / why not?
 Not evaluated. Intended Nemotron use through Nebius Token Factory: attack planning, actionable failure-path analysis, patch generation, regression-test generation, and attack mutation. Final verdicts remain deterministic application decisions based on execution evidence.
+
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M2 — Evidence & Trace
+
+Nebius product used: Not used yet.
+NVIDIA model used: Not used yet.
+
+What we attempted: Local deterministic event linking, trust metadata, source-location recording, and plain-text trace rendering. No provider requests.
+
+Zero-to-hello-world onboarding:
+- steps: not attempted
+- approximate time: not measured
+- documentation used: none for Nebius in M2
+
+What worked well: No provider observations.
+Specific friction / bugs: Not evaluated.
+Errors encountered: No provider requests.
+Latency: Not measured.
+Reliability: Not measured.
+Cost/token observations: Not measured.
+What would improve the product: No evidence-based provider feedback yet.
+Would we build with it again? Why / why not? Not evaluated yet.
