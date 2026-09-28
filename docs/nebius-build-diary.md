@@ -69,6 +69,49 @@ Would we build with it again? Why / why not? Not evaluated yet.
 ## Entry
 
 Date: 2026-09-27
+Milestone: M3.1 — Single Live-Provider Smoke Validation
+
+Nebius product used: Token Factory chat-completions API.
+NVIDIA model requested: `nvidia/nemotron-3-super-120b-a12b`.
+Configured base URL: `https://api.tokenfactory.nebius.com/v1`.
+
+What we attempted: Loaded the local, gitignored `.env` without printing the API
+key and ran the existing `nebius-repair-smoke` command once. The command built
+the P100 `AttackTrace`, `FailureBoundary`, and bounded `SourceContext`, then made
+exactly one real remediation request. No retry was attempted.
+
+Result: FAILED. Token Factory returned HTTP `422 Unprocessable Entity` from
+`/v1/chat/completions`. The command exited with status 2 and produced no
+`RepairProposal` output.
+
+Validation results:
+- API request succeeds: FAIL (`422 Unprocessable Entity`)
+- structured output validates as `RepairProposal`: NOT EVALUATED; no proposal returned
+- trace/boundary/evidence provenance preserved: NOT EVALUATED; no proposal returned
+- returned patch is machine-applicable: NOT EVALUATED; no patch returned
+- generated regression test is valid Python: NOT EVALUATED; no test returned
+- repository source remains unchanged: PASS; pre/post source-tree digests matched
+
+Latency: 2.45 seconds end-to-end wall time for the local trace construction and
+single provider attempt. API-only latency was not separately instrumented.
+
+Errors and friction: The current client raises on non-success HTTP status
+without retaining the provider response body, so this run established the 422
+status but not Token Factory's detailed validation message. Diagnosing it would
+require a future authorized request; none was made in this smoke validation.
+
+Reliability observation: 0 of 1 live requests succeeded. A single failed
+request is insufficient to characterize general service reliability.
+
+Cost/token observations: Unknown. No completion was returned and usage data was
+not captured.
+
+Patch handling: No patch or regression test was returned, no repair was
+applied, and M4.1/M5 were not started.
+
+## Entry
+
+Date: 2026-09-27
 Milestone: M3.1 — Provider-Backed AI Remediation
 
 Nebius product used: Token Factory API integration implemented; live service not called.
@@ -169,3 +212,41 @@ Reliability: Not measured.
 Cost/token observations: Not measured.
 What would improve the product: No evidence-based provider feedback yet.
 Would we build with it again? Why / why not? Not evaluated yet.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3.1 — Offline Investigation After Live HTTP 422
+
+Live request made during this investigation: No.
+
+Observed facts:
+- The one earlier live smoke used `https://api.tokenfactory.nebius.com/v1` with `nvidia/nemotron-3-super-120b-a12b` and returned HTTP 422.
+- The current official Nemotron-3-Super cookbook uses `https://api.tokenfactory.us-central1.nebius.com/v1/` for that exact model.
+- Nebius's structured-output documentation shows `response_format.type=json_schema` with a Pydantic-generated schema supplied directly as `response_format.json_schema`, which matches Gauntlet's envelope.
+- Gauntlet's prior request added `temperature: 0`; the cited Nemotron quickstart and structured-output example omit that optional field.
+- The generated `RepairProposal` schema is valid JSON Schema and contains `additionalProperties`, `anyOf`, `default`, `minItems`, `minLength`, `pattern`, `properties`, `required`, `title`, and `type` keywords.
+- The earlier client discarded the provider's validation response body after `raise_for_status`, so the server's exact 422 detail is unavailable.
+
+Changes made offline:
+- Updated the local gitignored `.env` and `.env.example` to the documented regional endpoint, including its trailing slash.
+- Enforced the regional host whenever the configured model is Nemotron-3-Super.
+- Removed the optional `temperature` parameter so the serialized request matches the documented minimal model request more closely.
+- Retained strict JSON-schema output; there is no unstructured fallback and `RepairProposal` validation was not weakened.
+- Added bounded provider-error body capture with recursive credential/header redaction and truncation at 4,000 characters.
+
+Root-cause assessment: The endpoint/model mismatch is the strongest offline
+hypothesis and is directly supported by the model-specific cookbook. It cannot
+be proven from the previous run because the 422 body was lost. The documented
+structured-output envelope is not a likely cause. Unsupported individual schema
+keywords or an optional request parameter remain unconfirmed possibilities;
+the documentation reviewed does not identify any of the emitted keywords as
+unsupported. The next authorized live response will preserve Nebius validation
+details if the request is still rejected.
+
+Offline verification: The exact serialized request now contains only `model`,
+`messages`, and `response_format` at the top level; targets the regional
+`/v1/chat/completions` URL; and retains the complete strict schema. Mock tests
+cover exact serialization, structured-output shape, regional endpoint
+enforcement, HTTP 422 detail preservation, and credential redaction. Full suite:
+74 passed, 0 failed.

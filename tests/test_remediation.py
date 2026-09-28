@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
-from gauntlet.llm.nebius import NebiusTokenFactoryClient
+from gauntlet.llm.nebius import NebiusAPIError, NebiusTokenFactoryClient
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import RepairProposal
@@ -145,7 +145,7 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
 
     config = NebiusConfig(
         api_key="synthetic-test-key",
-        base_url="https://api.tokenfactory.us-central1.nebius.com/v1",
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
         model="nvidia/nemotron-3-super-120b-a12b",
     )
     client = NebiusTokenFactoryClient(config, transport=httpx.MockTransport(handler))
@@ -156,8 +156,49 @@ async def test_nebius_transport_uses_documented_chat_schema_contract():
     assert content == '{"ok": true}'
     assert observed["url"].endswith("/v1/chat/completions")
     assert observed["authorization"] == "Bearer synthetic-test-key"
-    assert observed["body"]["model"] == "nvidia/nemotron-3-super-120b-a12b"
-    assert observed["body"]["response_format"]["type"] == "json_schema"
+    assert observed["body"] == {
+        "model": "nvidia/nemotron-3-super-120b-a12b",
+        "messages": [{"role": "user", "content": "test"}],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"type": "object", "properties": {}},
+        },
+    }
+
+
+async def test_nebius_422_preserves_sanitized_validation_body_and_redacts_credentials():
+    secret = "synthetic-secret-value"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={
+            "detail": [{"loc": ["body", "response_format"], "msg": "invalid schema"}],
+            "authorization": f"Bearer {secret}",
+            "echo": secret,
+            "nested": {"api_key": secret},
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key=secret,
+        base_url="https://api.tokenfactory.us-central1.nebius.com/v1/",
+        model="nvidia/nemotron-3-super-120b-a12b",
+    ), transport=httpx.MockTransport(handler))
+    with pytest.raises(NebiusAPIError) as raised:
+        await client.complete([{"role": "user", "content": "test"}])
+    message = str(raised.value)
+    assert raised.value.status_code == 422
+    assert "invalid schema" in message
+    assert '"response_format"' in message
+    assert secret not in message
+    assert message.count("[REDACTED]") == 3
+
+
+def test_nemotron_super_requires_documented_regional_endpoint():
+    with pytest.raises(ValueError, match="us-central1"):
+        NebiusTokenFactoryClient(NebiusConfig(
+            api_key="synthetic",
+            base_url="https://api.tokenfactory.nebius.com/v1/",
+            model="nvidia/nemotron-3-super-120b-a12b",
+        ))
 
 
 @pytest.mark.parametrize("base_url", [
