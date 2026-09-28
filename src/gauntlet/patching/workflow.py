@@ -9,7 +9,10 @@ from gauntlet.tracing.models import AttackTrace
 from victims.customer_support.app import create_app
 
 
-async def prove_patch(serialized_trace: str, *, test_suite_passed: bool | None = None) -> PatchProof:
+async def legacy_prove_test_double(
+    serialized_trace: str, *, test_suite_passed: bool | None = None
+) -> PatchProof:
+    """Legacy deterministic switch path; not the provider-backed M3 architecture."""
     pre_trace = AttackTrace.model_validate_json(serialized_trace)
     plan = plan_patch(serialized_trace)
     applied = AppliedPatch(
@@ -47,4 +50,13 @@ async def prove_patch(serialized_trace: str, *, test_suite_passed: bool | None =
         post_patch_verdict=after.verdict,
         regression=regression,
         test_suite_passed=test_suite_passed,
+    )
+
+
+async def prove_patch(
+    serialized_trace: str, *, test_suite_passed: bool | None = None
+) -> PatchProof:
+    """Compatibility alias for frozen tests; use M3.1 generate_repair_proposal."""
+    return await legacy_prove_test_double(
+        serialized_trace, test_suite_passed=test_suite_passed
     )

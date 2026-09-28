@@ -9,11 +9,16 @@ import httpx
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.tracing.renderer import render_trace
 from gauntlet.patching.renderer import render_patch_proof
-from gauntlet.patching.workflow import prove_patch
+from gauntlet.patching.workflow import legacy_prove_test_double
 from gauntlet.patching.planner import plan_patch
 from gauntlet.sandbox.orchestrator import SandboxRepairOrchestrator
 from gauntlet.sandbox.renderer import render_sandbox_result
 from victims.customer_support.app import create_app
+from gauntlet.core.config import NebiusConfig
+from gauntlet.llm.nebius import NebiusTokenFactoryClient
+from gauntlet.remediation.fake import FakeRemediationProvider
+from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
+from gauntlet.remediation.workflow import generate_repair_proposal
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +49,7 @@ async def attack(target: str) -> int:
     return 0 if result.succeeded else 1
 
 
-async def prove(target: str, *, run_tests: bool = True) -> int:
+async def legacy_prove(target: str, *, run_tests: bool = True) -> int:
     async with httpx.AsyncClient(
         base_url=target, timeout=15, trust_env=False, follow_redirects=False
     ) as client:
@@ -66,11 +71,31 @@ async def prove(target: str, *, run_tests: bool = True) -> int:
 
     # Serialization is an intentional boundary: M3 consumes the M2 artifact,
     # rather than diagnosing the victim independently.
-    proof = await prove_patch(
+    proof = await legacy_prove_test_double(
         before.trace.model_dump_json(), test_suite_passed=suite_passed
     )
     print(render_patch_proof(proof))
     return 0 if proof.verified else 1
+
+
+async def propose_repair(*, live: bool, repository_root: Path | None = None) -> int:
+    root = (repository_root or Path.cwd()).resolve()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app()), base_url="http://m2-local"
+    ) as client:
+        before = await IndirectPromptInjectionAttack(client).run()
+    if before.trace is None or not before.succeeded:
+        raise ValueError("M3.1 requires the confirmed M2 trace")
+    provider = (
+        NebiusNemotronRemediationProvider(
+            NebiusTokenFactoryClient(NebiusConfig.from_environment())
+        ) if live else FakeRemediationProvider()
+    )
+    proposal = await generate_repair_proposal(
+        before.trace.model_dump_json(), root, provider
+    )
+    print(proposal.model_dump_json(indent=2))
+    return 0
 
 
 async def sandbox_prove(repository_root: Path | None = None) -> int:
@@ -92,18 +117,24 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     sub = commands.add_parser("attack")
     sub.add_argument("--target", type=local_target, required=True)
-    proof = commands.add_parser("prove")
+    proof = commands.add_parser("legacy-prove")
     proof.add_argument("--target", type=local_target, required=True)
+    commands.add_parser("propose-repair")
+    commands.add_parser("nebius-repair-smoke")
     commands.add_parser("sandbox-prove")
     args = parser.parse_args()
     try:
         if args.command == "attack":
             return asyncio.run(attack(args.target))
-        if args.command == "prove":
-            return asyncio.run(prove(args.target))
+        if args.command == "legacy-prove":
+            return asyncio.run(legacy_prove(args.target))
+        if args.command == "propose-repair":
+            return asyncio.run(propose_repair(live=False))
+        if args.command == "nebius-repair-smoke":
+            return asyncio.run(propose_repair(live=True))
         return asyncio.run(sandbox_prove())
     except (httpx.HTTPError, ValueError, KeyError) as exc:
-        logger.error("Attack could not complete: %s", exc)
+        logger.error("Command could not complete: %s", exc)
         return 2
 
 if __name__ == "__main__":

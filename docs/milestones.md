@@ -16,31 +16,45 @@ Turn structured events into an actionable attack path.
 
 Exit: Gauntlet can show where untrusted data crossed a trust boundary.
 
-## M3 — Evidence-Guided Patch + Re-Attack
+## M3.1 — Provider-Backed AI Remediation
 
-Status: COMPLETE. Full suite: 41 passed, 0 failed (all 34 frozen M1/M2 tests + 7 M3 tests). The real HTTP `prove` command confirmed the vulnerable baseline, consumed its serialized M2 trace, re-ran the same attack against the constrained repair, preserved P200 behavior, and emitted PATCH VERIFIED only after the suite passed.
+Status: COMPLETE within the provider-integration scope. Full suite: 72 passed,
+0 failed. `LIVE_PROVIDER_NOT_TESTED`: the required Nebius environment variables
+were unavailable, so no live request was made or implied.
 
-Consume M2 evidence to produce a structured patch plan for the one authorized
-source seam. Enforce a data-only boundary for untrusted review content, re-run
-the same P100 attack, run P200 regression and the complete suite, and link all
-artifacts in a structured PatchProof.
+The workflow preserves the M2 artifact chain, extracts a bounded and hashed
+authorized source span, and passes both through a provider interface. The real
+implementation targets Nebius Token Factory and
+`nvidia/nemotron-3-super-120b-a12b`; a deterministic fake exercises the full
+offline contract. Strict output validation requires a single-target unified
+diff, executable Python regression-test source, rationale, provider/model
+metadata, and unchanged trace/boundary/evidence provenance. M3.1 snapshots the
+target and verifies that proposal generation did not modify it.
 
-Exit: CANARY_LEAKED before, CANARY_NOT_OBSERVED after, same attack confirmed,
-clean utility behavior passes, and full tests pass.
+Exit: a schema-valid, reviewable `RepairProposal` whose offline fixture diff is
+machine-applicable, without applying it or claiming `PATCH VERIFIED`.
+
+The earlier deterministic apply/re-attack workflow remains explicitly named
+`legacy_prove_test_double` for compatibility. It is not M3.1.
 
 ## M4 — Sandbox Repair Loop
 
-Status: COMPLETE. A disposable allowlisted copy receives the M3 PatchPlan,
+Status: PARTIAL. A disposable allowlisted copy receives the legacy PatchPlan,
 build and repair-specific tests execute with that copy as cwd, failures are
 structured, retry attempts are capped at three, the original digest remains
 unchanged, and successful runs clean up the copy. Full repository suite: 53
 passed, 0 failed (41 frozen M1-M3 + 12 M4).
+
+M4 does not yet consume the exact M3.1 `RepairProposal` or its generated test,
+and retry proposals are not yet applied. That is future M4.1 work.
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 
 Exit: V2 successfully builds in isolation.
 
 ## M5 — Prove
+
+Status: NOT STARTED.
 
 Run original exploit, mutated attacks, and legitimate utility tests.
 
@@ -79,7 +93,7 @@ Future PROVE:
 - Case B: user explicitly asks for Tamil-inspired names → culturally specific personalization should work.
 - Case C: user explicitly states a naming preference → use it without expanding it into broader identity claims.
 
-This is part of Gauntlet and is not implemented through M3.
+This is part of Gauntlet and is not implemented through M3.1.
 
 ## M7 — Product & Submission
 
@@ -87,6 +101,6 @@ Add polished frontend, attack trace visualization, patch diff, before/after proo
 
 Angular UI, Postgres, Tavily, Serverless Jobs, CI/CD, additional attacks,
 arbitrary patch generation, arbitrary repository execution, personalization testing
-implementation, and scoring remain outside M4. All future attack execution
+implementation, and scoring remain outside the current M4. All future attack execution
 requires explicitly authorized targets and containment. No arbitrary security
 percentages.

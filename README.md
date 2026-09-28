@@ -20,7 +20,9 @@ In another terminal, from this root:
 ```bash
 source .venv/bin/activate
 python -m gauntlet.cli attack --target http://localhost:8001
-python -m gauntlet.cli prove --target http://localhost:8001
+python -m gauntlet.cli propose-repair
+# Opt-in only, after exporting all three NEBIUS_* variables:
+python -m gauntlet.cli nebius-repair-smoke
 python -m gauntlet.cli sandbox-prove
 pytest
 ```
@@ -57,35 +59,20 @@ victims/customer_support/agent.py
 CustomerSupportAgent.chat
 ```
 
-The `prove` command consumes the serialized M2 `AttackTrace`, creates a
-constrained `PatchPlan`, applies the supported data-only boundary to a local
-patched app instance, repeats the exact P100 request/tool call, checks P200,
-and runs the complete test suite. It emits `PATCH VERIFIED` only when the
-original exploit was confirmed, the same attack no longer leaks the canary,
-clean review behavior passes, and pytest passes.
+The M3.1 `propose-repair` command consumes a serialized M2 `AttackTrace` and
+`FailureBoundary`, reads only the authorized `CustomerSupportAgent.chat`
+source span, and asks a provider abstraction for a strict `RepairProposal`.
+The default command uses an offline deterministic provider substitute so the
+complete contract can be tested without credentials. The separate
+`nebius-repair-smoke` command uses Nebius Token Factory with the configured
+NVIDIA Nemotron model. M3.1 does not apply the proposal or emit a proof verdict.
 
-```text
-PATCH PROOF
-
-BEFORE
-Exploit: CONFIRMED
-Verdict: CANARY_LEAKED
-
-PATCH
-victims/customer_support/agent.py
-CustomerSupportAgent.chat
-
-RE-ATTACK
-Same attack: YES
-Verdict: CANARY_NOT_OBSERVED
-
-REGRESSION
-Clean behavior: PASS
-Test suite: PASS
-
-RESULT
-PATCH VERIFIED
-```
+Each proposal includes the exact trace, boundary, and evidence IDs; provider
+and model metadata; source hash; authorized target; rationale; a single-target
+unified diff; actual Python regression-test source; and an optional policy
+artifact. Provider JSON with missing, extra, malformed, or changed provenance
+fields is rejected. The offline proposal's diff passes `git apply --check`,
+while the source file remains byte-for-byte unchanged.
 
 Exit codes: 0 = exploit confirmed, 1 = canary not observed, 2 = invalid arguments/execution failure. Absence of the canary alone is not a safety proof. Structured events are returned by `/chat` and included in `AttackResult`. M2 adds an evidence-backed attack path, supporting event IDs, trust-boundary evidence, and the actionable source symbol. These are observations, not hidden model reasoning.
 
@@ -95,18 +82,23 @@ All secrets used in Gauntlet demo scenarios are synthetic canaries. No attack ma
 
 The CLI accepts only loopback HTTP origins, disables environment proxies and redirects, and pins `localhost` to `127.0.0.1`. Run the deliberately vulnerable service on loopback only. The library is a local test harness, not a sandbox or general target authorization system. Tool evidence is supplied by the demo victim and is not independently authenticated.
 
-M3's repair is deterministic and constrained to the synthetic victim's
-`CustomerSupportAgent.chat` seam. It does not edit arbitrary repositories.
-The default app remains vulnerable so the frozen M1/M2 baseline can be
-reproduced; the proof workflow explicitly constructs the repaired variant.
-Non-reproduction of this one exploit does not establish universal security.
+M3.1's generated repair is constrained to the synthetic victim's
+`CustomerSupportAgent.chat` seam. Absolute paths, traversal, locations outside
+the repository, and locations that do not match M2 boundary evidence are
+rejected. The default app remains vulnerable so the frozen M1/M2 baseline can
+be reproduced. **Repair proposed != Patch applied != Patch verified.**
 
-M4's `sandbox-prove` command creates a fresh temporary directory, copies only
+The former deterministic M3 proof remains only as the `legacy-prove` command
+and `legacy_prove_test_double` compatibility path for frozen tests. It is not
+the provider-backed M3.1 architecture.
+
+The current, partial M4 `sandbox-prove` command creates a fresh temporary directory, copies only
 `pyproject.toml`, `src`, `victims`, and `sandbox_checks`, applies the existing
-M3 plan at the authorized file/symbol, compiles and tests inside that directory,
+legacy deterministic plan at the authorized file/symbol, compiles and tests inside that directory,
 compares the original repository digest, and removes the copy. Its command
 runner exposes only fixed BUILD and TEST categories; it does not accept shell
-text or arbitrary commands.
+text or arbitrary commands. A later M4.1 must consume and apply the exact M3.1
+proposal and generated regression test; that work has not started.
 
 ```text
 SANDBOX REPAIR
@@ -130,6 +122,6 @@ RESULT
 SANDBOX REPAIR VERIFIED
 ```
 
-`Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. No credentials are required. `.env.example` documents future `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL` configuration. The application reads actual environment variables; it does not automatically load `.env` files. The Nebius adapter explicitly raises `NotImplementedError`; no endpoint or provider protocol is assumed.
+`Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. Offline operation requires no credentials. Live M3.1 uses `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL`; `.env.example` records the approved Token Factory base URL and selected `nvidia/nemotron-3-super-120b-a12b` model. The client uses the OpenAI-compatible `/v1/chat/completions` API with Bearer authentication and JSON-schema structured output. It accepts only approved Nebius HTTPS hosts and reads actual environment variables; it does not automatically load `.env` files. No credentials were present during M3.1 development, so the live status is `LIVE_PROVIDER_NOT_TESTED`.
 
 The victim lives in the source repository and is run from the repository root. Only the Gauntlet package is installed. See [architecture](docs/architecture.md), [milestones](docs/milestones.md), and [build diary](docs/nebius-build-diary.md).

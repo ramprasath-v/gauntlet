@@ -1,14 +1,15 @@
 # Architecture
 
-The eventual loop is ATTACK → TRACE → PATCH → BUILD → RE-ATTACK → PROVE. M1 confirms the exploit; M2 reconstructs its observable, actionable failure path; M3 consumes that artifact for one constrained repair and before/after proof.
+The eventual loop is ATTACK → TRACE → PATCH → BUILD → RE-ATTACK → PROVE. M1 confirms the exploit; M2 reconstructs its observable, actionable failure path; M3.1 generates a constrained repair proposal. Later milestones apply and prove it.
 
 - `core`: Pydantic request, response and attack-result contracts; environment configuration and public canary constants.
-- `llm`: async `AgentModelClient` protocol, deterministic `FakeAgentModelClient`, and unimplemented `NebiusTokenFactoryClient` boundary.
+- `llm`: async victim-model protocol plus an implemented, host-restricted Nebius Token Factory OpenAI-compatible transport.
 - `victims/customer_support`: FastAPI `/chat`, fixed review lookup, poisoned P100 fixture and clean P200 fixture.
 - `attacks`: async attack protocol and one indirect-injection attack using httpx.
 - `verification`: exact case-sensitive canary substring detection against response text only, with no model judgment.
 - `tracing`: structured user-message, tool-call, tool-result, model-response and verdict events. M2 adds linked context-flow evidence and actionable source locations; it does not infer hidden reasoning.
-- `patching`: validates a serialized M2 trace, creates a constrained plan, runs the repaired local variant, checks P200 utility, and links the artifacts in a `PatchProof`.
+- `remediation`: derives bounded source context from M2 evidence, builds the defensive prompt, invokes a replaceable provider, and strictly validates `RepairProposal` provenance and content without applying it.
+- `patching`: retains the earlier deterministic plan and proof only as a legacy/test-double compatibility path.
 - `sandbox`: copies an allowlisted project subset to a temporary directory, applies the M3 plan there, runs fixed build/test commands, captures structured results, bounds retries, checks the original digest, and cleans up.
 - `cli`: invokes the loopback demo, prints evidence and a concrete verdict.
 
@@ -18,7 +19,7 @@ The simulator recognizes one fixed instruction. This is not an LLM evaluation, g
 
 HTTP errors and malformed response contracts raise execution errors, rather than being treated as safe. `CANARY_NOT_OBSERVED` is not PATCH VERIFIED. Tool provenance is emitted by the cooperating victim, not independently verified.
 
-No order lookup, refund action, arbitrary code editing, sandbox, persistence, frontend, or live model call is implemented. Later execution must add authorized isolation separately. No .NET artifacts are part of this Python implementation.
+No order lookup, refund action, arbitrary code editing, persistence, frontend, or live model call is implemented. The existing disposable-copy sandbox remains partial because it does not yet consume M3.1 output. No .NET artifacts are part of this Python implementation.
 
 
 ## M2 — Evidence & Trace
@@ -33,34 +34,34 @@ Instruction-like detection recognizes only the known M1 fixture header and instr
 
 Evidence strength DETERMINISTIC describes reproducible checks over the local instrumented runtime. Victim-provided provenance is not independently authenticated. The recorded source symbol identifies the inspected local integration seam, not an attestation of arbitrary remote code. Gauntlet observes and experiments on behavior; it has no access to model chain-of-thought and makes no claim of internal causal proof. No security behavior, patching, or live model integration changed in M2.
 
-## M3 — Evidence-Guided Patch + Re-Attack
+## M3.1 — Provider-Backed AI Remediation
 
-`plan_patch` accepts serialized `AttackTrace` JSON. It rejects traces without a
-`FailureBoundary`, boundaries with missing evidence IDs, and locations other
-than `victims/customer_support/agent.py` / `CustomerSupportAgent.chat`.
-`PatchPlan` carries the source trace ID, stable boundary ID, supporting event
-IDs, target location, failure type, control, evidence-backed rationale, and
-security invariant.
+`build_source_context` accepts serialized `AttackTrace` JSON and rejects a
+missing boundary, missing evidence, absolute/traversal paths, non-allowlisted
+targets, resolution outside the repository, and source locations that differ
+from the location embedded in boundary evidence. It extracts only the
+`CustomerSupportAgent.chat` AST span, caps it at 12,000 characters, and hashes
+that exact text.
 
-The repair adds a data-only boundary flag to the model context at the identified
-seam. Tool text stays available as review data, but the deterministic patched
-simulator summarizes its review-prose channel without interpreting any tool
-text as instructions. The control does not match P100 or the poison sentence;
-it applies to all untrusted review content. The default app remains vulnerable
-to preserve the frozen M1/M2 baseline. The M3 workflow explicitly creates the
-patched variant.
+`RemediationProvider` separates generation from orchestration. The production
+provider sends a defensive system contract and serialized M2 evidence/source
+context to Nebius Token Factory's OpenAI-compatible chat-completions endpoint,
+requesting JSON-schema output from `nvidia/nemotron-3-super-120b-a12b`. The
+transport requires explicit environment configuration, Bearer authentication,
+HTTPS, an approved Token Factory host, `/v1`, no redirects, and no environment
+proxy. Tests inject `httpx.MockTransport`; the offline fake supplies a complete
+proposal without network access.
 
-`PatchProof` links the pre-patch trace, plan, applied-control record, post-patch
-trace, same-attack comparison, verifier result, P200 regression result, and
-full-suite result. Same attack means the innocent user message and
-`search_reviews(P100)` call are identical before and after. `PATCH VERIFIED`
-requires a confirmed pre-patch leak, matching re-attack, no post-patch canary,
-clean P200 behavior, and a passing complete suite.
+`RepairProposal` forbids extra fields and requires a new UUID, preserved
+trace/boundary/evidence IDs, provider/model metadata, target and source hash,
+rationale, one unified diff for the authorized target, syntactically valid
+Python test source containing a test assertion, and an optional policy artifact.
+The workflow rejects provider attempts to rewrite provenance and confirms that
+the authorized source bytes are unchanged after generation.
 
-This is a deterministic repair of one synthetic local victim, not a general
-prompt-injection defense. Exploit non-reproduction is evidence about this test,
-not universal security. The proof uses observable events and source inspection;
-it does not expose or infer hidden model reasoning.
+M3.1 returns only the proposal. **Repair proposed != Patch applied != Patch
+verified.** The legacy deterministic apply/re-attack code is explicitly marked
+as a compatibility test double and is not the provider-backed architecture.
 
 ## M4 — Isolated Sandbox Repair Loop
 
@@ -70,7 +71,7 @@ four required inputs: `pyproject.toml`, `src`, `victims`, and
 unique temporary directory, rejects absolute and traversal paths, and removes
 the directory unless retention was explicitly requested for debugging.
 
-The applicator consumes the existing M3 `PatchPlan`. It accepts only
+The current applicator consumes the legacy `PatchPlan`. It accepts only
 `victims/customer_support/agent.py` and `CustomerSupportAgent.chat`, parses the
 symbol, verifies the exact integration seam, and writes only the resolved file
 inside the sandbox. `PatchApplicationResult` records its patch/workspace IDs,
@@ -85,10 +86,10 @@ directory, and workspace ID.
 
 `SandboxRepairOrchestrator` allows at most three attempts. Patch, build, and
 test failures become `RepairFailure` values with observable command evidence.
-A `RepairProposalClient` receives the existing plan, relevant source, and the
-failure; the deterministic offline implementation returns a scope-preserving
-proposal. Any proposal that changes the authorized patch/file/symbol is
-rejected. No Nebius behavior is assumed.
+A legacy `RepairProposalClient` receives the existing plan, relevant source,
+and the failure; its deterministic offline result is currently discarded.
+M4 is therefore partial until M4.1 applies the exact M3.1 proposal and generated
+regression test. No M4.1 or M5 work is included in this milestone.
 
 Success requires patch application, build and sandbox regression success,
 unchanged original repository digest, and cleanup. The sandbox regression

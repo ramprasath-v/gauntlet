@@ -16,3 +16,13 @@ class NebiusConfig:
         return cls(api_key=os.getenv("NEBIUS_API_KEY") or None,
                    base_url=os.getenv("NEBIUS_BASE_URL") or None,
                    model=os.getenv("NEBIUS_MODEL") or None)
+
+    def require_complete(self) -> "NebiusConfig":
+        missing = [name for name, value in (
+            ("NEBIUS_API_KEY", self.api_key),
+            ("NEBIUS_BASE_URL", self.base_url),
+            ("NEBIUS_MODEL", self.model),
+        ) if not value]
+        if missing:
+            raise ValueError("Missing Nebius configuration: " + ", ".join(missing))
+        return self
