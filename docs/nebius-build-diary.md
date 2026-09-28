@@ -65,3 +65,57 @@ Reliability: Not measured.
 Cost/token observations: Not measured.
 What would improve the product: No evidence-based provider feedback yet.
 Would we build with it again? Why / why not? Not evaluated yet.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M3 — Evidence-Guided Patch + Re-Attack
+
+Nebius product used: Not used yet.
+NVIDIA model used: Not used yet.
+
+What we attempted: Consumed serialized M2 evidence to plan one constrained
+local repair, re-ran the same exploit, checked legitimate behavior, and linked
+the results in a deterministic proof artifact. No provider request was made.
+
+Zero-to-hello-world onboarding:
+- steps: not attempted
+- approximate time: not measured
+- documentation used: none for Nebius in M3
+
+What worked well: No provider observations.
+Specific friction / bugs: Not evaluated.
+Errors encountered: No provider requests.
+Latency: Not measured.
+Reliability: Not measured.
+Cost/token observations: Not measured.
+What would improve the product: No evidence-based provider feedback yet.
+Would we build with it again? Why / why not? Not evaluated yet.
+
+## Entry
+
+Date: 2026-09-27
+Milestone: M4 — Isolated Sandbox Repair Loop
+
+Nebius product used: Not used yet.
+NVIDIA model used: Not used yet.
+
+What we attempted: Applied the existing M3 plan to disposable local project
+copies, ran fixed build/test commands, captured structured failures, exercised
+a three-attempt bound, and verified cleanup plus an unchanged source digest.
+A deterministic repair-proposal client exercised the future provider boundary.
+No provider request was made.
+
+Zero-to-hello-world onboarding:
+- steps: not attempted
+- approximate time: not measured
+- documentation used: none for Nebius in M4
+
+What worked well: No provider observations.
+Specific friction / bugs: Not evaluated.
+Errors encountered: No provider requests.
+Latency: Not measured.
+Reliability: Not measured.
+Cost/token observations: Not measured.
+What would improve the product: No evidence-based provider feedback yet.
+Would we build with it again? Why / why not? Not evaluated yet.

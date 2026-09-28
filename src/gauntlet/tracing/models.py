@@ -41,6 +41,7 @@ class ExecutionEvent(BaseModel):
     context_flow: ContextFlow | None = None
 
 class FailureBoundary(BaseModel):
+    boundary_id: str = Field(default_factory=lambda: str(uuid4()))
     from_component: str
     from_trust_level: TrustLevel
     to_component: str

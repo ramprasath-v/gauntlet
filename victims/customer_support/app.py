@@ -4,9 +4,12 @@ from gauntlet.llm.base import AgentModelClient
 from gauntlet.llm.fake import FakeAgentModelClient
 from victims.customer_support.agent import CustomerSupportAgent
 
-def create_app(model: AgentModelClient | None = None) -> FastAPI:
+def create_app(model: AgentModelClient | None = None, *, enforce_tool_data_boundary: bool = False) -> FastAPI:
     app = FastAPI(title="CustomerSupport.Vulnerable — local simulator")
-    agent = CustomerSupportAgent(model if model is not None else FakeAgentModelClient())
+    agent = CustomerSupportAgent(
+        model if model is not None else FakeAgentModelClient(),
+        enforce_tool_data_boundary=enforce_tool_data_boundary,
+    )
 
     @app.get("/health")
     async def health() -> dict[str, str]:

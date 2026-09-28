@@ -20,6 +20,8 @@ In another terminal, from this root:
 ```bash
 source .venv/bin/activate
 python -m gauntlet.cli attack --target http://localhost:8001
+python -m gauntlet.cli prove --target http://localhost:8001
+python -m gauntlet.cli sandbox-prove
 pytest
 ```
 
@@ -55,6 +57,36 @@ victims/customer_support/agent.py
 CustomerSupportAgent.chat
 ```
 
+The `prove` command consumes the serialized M2 `AttackTrace`, creates a
+constrained `PatchPlan`, applies the supported data-only boundary to a local
+patched app instance, repeats the exact P100 request/tool call, checks P200,
+and runs the complete test suite. It emits `PATCH VERIFIED` only when the
+original exploit was confirmed, the same attack no longer leaks the canary,
+clean review behavior passes, and pytest passes.
+
+```text
+PATCH PROOF
+
+BEFORE
+Exploit: CONFIRMED
+Verdict: CANARY_LEAKED
+
+PATCH
+victims/customer_support/agent.py
+CustomerSupportAgent.chat
+
+RE-ATTACK
+Same attack: YES
+Verdict: CANARY_NOT_OBSERVED
+
+REGRESSION
+Clean behavior: PASS
+Test suite: PASS
+
+RESULT
+PATCH VERIFIED
+```
+
 Exit codes: 0 = exploit confirmed, 1 = canary not observed, 2 = invalid arguments/execution failure. Absence of the canary alone is not a safety proof. Structured events are returned by `/chat` and included in `AttackResult`. M2 adds an evidence-backed attack path, supporting event IDs, trust-boundary evidence, and the actionable source symbol. These are observations, not hidden model reasoning.
 
 ## Safety and configuration
@@ -62,6 +94,41 @@ Exit codes: 0 = exploit confirmed, 1 = canary not observed, 2 = invalid argument
 All secrets used in Gauntlet demo scenarios are synthetic canaries. No attack may touch real external targets. No network scanning. All future attack execution must remain limited to explicitly authorized targets.
 
 The CLI accepts only loopback HTTP origins, disables environment proxies and redirects, and pins `localhost` to `127.0.0.1`. Run the deliberately vulnerable service on loopback only. The library is a local test harness, not a sandbox or general target authorization system. Tool evidence is supplied by the demo victim and is not independently authenticated.
+
+M3's repair is deterministic and constrained to the synthetic victim's
+`CustomerSupportAgent.chat` seam. It does not edit arbitrary repositories.
+The default app remains vulnerable so the frozen M1/M2 baseline can be
+reproduced; the proof workflow explicitly constructs the repaired variant.
+Non-reproduction of this one exploit does not establish universal security.
+
+M4's `sandbox-prove` command creates a fresh temporary directory, copies only
+`pyproject.toml`, `src`, `victims`, and `sandbox_checks`, applies the existing
+M3 plan at the authorized file/symbol, compiles and tests inside that directory,
+compares the original repository digest, and removes the copy. Its command
+runner exposes only fixed BUILD and TEST categories; it does not accept shell
+text or arbitrary commands.
+
+```text
+SANDBOX REPAIR
+
+PATCH
+Applied: YES
+Original workspace modified: NO
+
+BUILD
+PASS
+
+TESTS
+PASS
+
+CONTAINMENT
+Workspace isolation: PASS
+Outside writes: NONE
+Cleanup: PASS
+
+RESULT
+SANDBOX REPAIR VERIFIED
+```
 
 `Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. No credentials are required. `.env.example` documents future `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL` configuration. The application reads actual environment variables; it does not automatically load `.env` files. The Nebius adapter explicitly raises `NotImplementedError`; no endpoint or provider protocol is assumed.
 

@@ -16,13 +16,25 @@ Turn structured events into an actionable attack path.
 
 Exit: Gauntlet can show where untrusted data crossed a trust boundary.
 
-## M3 — Patch Generated
+## M3 — Evidence-Guided Patch + Re-Attack
 
-Use Nemotron with source + evidence to generate a remediation hypothesis, real code patch, optional policy, and regression test.
+Status: COMPLETE. Full suite: 41 passed, 0 failed (all 34 frozen M1/M2 tests + 7 M3 tests). The real HTTP `prove` command confirmed the vulnerable baseline, consumed its serialized M2 trace, re-ran the same attack against the constrained repair, preserved P200 behavior, and emitted PATCH VERIFIED only after the suite passed.
 
-Exit: patch/test artifacts are real and reviewable.
+Consume M2 evidence to produce a structured patch plan for the one authorized
+source seam. Enforce a data-only boundary for untrusted review content, re-run
+the same P100 attack, run P200 regression and the complete suite, and link all
+artifacts in a structured PatchProof.
+
+Exit: CANARY_LEAKED before, CANARY_NOT_OBSERVED after, same attack confirmed,
+clean utility behavior passes, and full tests pass.
 
 ## M4 — Sandbox Repair Loop
+
+Status: COMPLETE. A disposable allowlisted copy receives the M3 PatchPlan,
+build and repair-specific tests execute with that copy as cwd, failures are
+structured, retry attempts are capped at three, the original digest remains
+unchanged, and successful runs clean up the copy. Full repository suite: 53
+passed, 0 failed (41 frozen M1-M3 + 12 M4).
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 
@@ -67,10 +79,14 @@ Future PROVE:
 - Case B: user explicitly asks for Tamil-inspired names → culturally specific personalization should work.
 - Case C: user explicitly states a naming preference → use it without expanding it into broader identity claims.
 
-This is part of Gauntlet and is not implemented in M1.
+This is part of Gauntlet and is not implemented through M3.
 
 ## M7 — Product & Submission
 
 Add polished frontend, attack trace visualization, patch diff, before/after proof, Nebius/NVIDIA integration evidence, required feedback, README, 3-minute pitch video, and Devpost submission.
 
-Angular UI, Postgres, Tavily, Serverless Jobs, CI/CD, additional attacks, patch generation, sandbox repair, personalization testing implementation, and scoring are outside M1. All future attack execution requires explicitly authorized targets and containment. No arbitrary security percentages.
+Angular UI, Postgres, Tavily, Serverless Jobs, CI/CD, additional attacks,
+arbitrary patch generation, arbitrary repository execution, personalization testing
+implementation, and scoring remain outside M4. All future attack execution
+requires explicitly authorized targets and containment. No arbitrary security
+percentages.
