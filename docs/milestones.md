@@ -1,5 +1,15 @@
 # Milestones
 
+## Status after M4
+
+- M1 ATTACK = COMPLETE
+- M2 TRACE = COMPLETE
+- M3 AI REPAIR = COMPLETE
+- M4 SAFE BUILD / INDEPENDENT VERIFICATION = COMPLETE
+- M5 BROADER PROOF / ATTACK MUTATIONS = NEXT
+- M6 SENSITIVE-INFERENCE / PERSONALIZATION SAFETY = PENDING
+- M7 DEMO / HACKATHON PACKAGING = PENDING
+
 ## M1 — Exploit Confirmed
 
 Status: COMPLETE. Original 23 behavioral tests remain green.
@@ -76,8 +86,8 @@ proof move to M4.1.
 
 ## M4 — Sandbox Repair Loop
 
-Status: READY FOR FINAL LIVE. M4.1, M4.2, M4.2.1, and the clean repair
-benchmark are COMPLETE OFFLINE. Full repository suite: 146 passed, 0 failed.
+Status: COMPLETE. M4.1, M4.2, M4.2.1, the clean repair benchmark, frozen model
+comparison, and independent trusted-gate assessment are complete.
 
 M4.1 executes exactly one existing validated `RepairProposal` in a fresh
 disposable allowlisted workspace. It verifies the M3 source-symbol hash, applies
@@ -127,9 +137,19 @@ existing M4.1 path. The same fixture also succeeds through the existing
 bounded M4.2 path in one offline attempt. Trivial, constant, fixture-specific,
 verifier-targeting, and unauthorized controls do not receive proof.
 
-No live provider request was made for this correction, and no claim is made
-that Lightning can repair the clean benchmark. The next M4 action is one final
-separately authorized live Attack → Patch → Prove experiment.
+The final frozen comparison covered Qwen, Nemotron Super, and Kimi without
+weakening compilation or downstream verification. The retained Kimi attempt-3
+patch compiled and, under deterministic independent re-evaluation, passed the
+trusted P100 security gate, P200 utility gate, and all 21 compatibility tests.
+Its unchanged model-generated regression still failed collection because it
+imported a nonexistent module. The assessment therefore records a verified
+security repair and preserved utility/compatibility, while correctly refusing
+the full-candidate claim.
+
+Trusted benchmark gates and the model-generated regression now run in separate
+disposable workspaces bound to the same patch digest. Generated-test quality
+remains visible but cannot suppress independent benchmark-owned evidence.
+Repository immutability and cleanup passed. M5 attack-mutation proof is next.
 
 Apply patch to isolated copy. Build and test patched version. Support bounded repair attempts when generated code fails compilation/tests.
 

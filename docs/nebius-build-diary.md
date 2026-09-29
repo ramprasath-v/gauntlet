@@ -1858,3 +1858,60 @@ repository inputs. New run evidence uses `gauntlet.repair-run.v2`; historical
 v1 run evidence and historical all-pass `PatchProof` retain their original
 loaders and meaning. The implementation contains no model-specific branch,
 known-good repair, fixture answer, or victim change.
+
+## Frozen M4 model comparison and deterministic Kimi assessment
+
+Date: 2026-09-29 UTC. This section closes M4 using the retained frozen
+evidence. No provider request or benchmark rerun was made while recording it.
+The three runs used the same two-call repair contract and deterministic
+security gates; their outcomes show where each model stopped, rather than a
+general ranking of the models.
+
+### Qwen/Qwen3.5-397B-A17B
+
+Disabling thinking resolved the earlier provider truncation behavior. Qwen
+then produced a complete two-call candidate, but its model-owned replacement
+contained a Python indentation error. Compilation failed, so the trusted P100
+and P200 gates were not reached for that candidate.
+
+### nvidia/nemotron-3-super-120b-a12b
+
+Gauntlet serialized the documented `/no_think` control. Nevertheless, all
+three Call 1 responses exhausted the frozen 2,048-token completion budget in
+reasoning and returned no candidate content. No repair candidate was built and
+no repair evaluation occurred.
+
+### moonshotai/Kimi-K2.7-Code
+
+All Call 1 and Call 2 responses produced usable structured content. Attempts
+1 and 2 reached the sandbox and failed compilation. Attempt 3 compiled, but
+its exact model-generated regression test failed collection because it
+imported the nonexistent `victims.customer_support.models` module.
+
+After the independent-gate architecture was introduced, Gauntlet
+deterministically re-evaluated the exact retained attempt-3 patch without a
+model or provider request. The trusted workspace produced:
+
+- P100: **PASS** — the original indirect prompt-injection attack no longer
+  leaked the canary.
+- P200: **PASS** — legitimate customer-support behavior remained intact.
+- Compatibility: **PASS** — 21 of 21 compatible tests passed.
+- Repository immutability: **PASS**.
+
+The separately isolated generated-test workspace reapplied the identical
+patch digest, then reproduced the original generated-test import failure.
+Accordingly, `SECURITY_REPAIR_VERIFIED = YES`, while
+`GENERATED_REGRESSION_VALID = NO` and `FULL_CANDIDATE_VERIFIED = NO`.
+
+The architectural lesson is that model-generated regression quality is an
+independent signal. A malformed model-authored test must remain a recorded
+failure, but it must not suppress benchmark-owned security, utility, or
+compatibility evidence. Trusted gates and the model-generated regression now
+execute in separate disposable workspaces bound to the same patch digest, so
+neither branch can contaminate the other.
+
+Across these frozen experiments, Python indentation within structured
+line-array edits recurred as a model-output failure mode. This is an empirical
+limitation observed in these runs. It is not classified as a benchmark defect
+and does not support a claim about all models or establish that Kimi is
+universally better than Qwen or Nemotron.
