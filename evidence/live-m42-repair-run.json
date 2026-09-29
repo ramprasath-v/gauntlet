@@ -1,0 +1,430 @@
+{
+  "schema_version": "gauntlet.repair-run.v1",
+  "result": {
+    "status": "FAILED",
+    "run_id": "57393f70-2c41-4bab-a251-206755fbd06f",
+    "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+    "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+    "evidence_ids": [
+      "d255fad0-2372-41d7-911f-2ad81bc6f476",
+      "04506a0c-3292-410f-84f1-c652a6a988c7",
+      "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+      "32577f7f-72fb-4527-9de7-ba734682d92e",
+      "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "moonshotai/Kimi-K2.7-Code",
+    "total_attempts": 3,
+    "attempts": [
+      {
+        "attempt": 1,
+        "candidate_id": "2442be34-4bc2-46af-a398-9b83819d2ffa",
+        "previous_failure_id": null,
+        "provider": "nebius_token_factory",
+        "model": "moonshotai/Kimi-K2.7-Code",
+        "candidate_digest": "e533069225aa9a58db6309acdb026250014ae30e4893026deccf7d047c0c726b",
+        "candidate_field_digests": {
+          "rationale": "54aef658b3cb38076db5a1661495358a9341888b13acd4a5719b78117256395a",
+          "source_edit": "e6ef6865fc0ebdd3e3342c3f93b2a1a3219bec83f2008af403deeaa3fc89eb41",
+          "regression_test": "122ae7de74103ae6f3d3a1b93a4f0c43bc8a6ca9c4f0f24e5ae5e9a641a0bc56",
+          "optional_policy_artifact": "02c8891b8eb6ec9b032bc48b68c7e0c48c282a58f752fb10c683f70724fd99d2"
+        },
+        "candidate_field_lengths": {
+          "rationale": 482,
+          "source_edit": 2789,
+          "regression_test": 1167,
+          "optional_policy_artifact": 228
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "2442be34-4bc2-46af-a398-9b83819d2ffa",
+          "attempt_number": 1,
+          "path": "live-m42-repair-run.candidates/attempt-01-2442be34-4bc2-46af-a398-9b83819d2ffa.json",
+          "candidate_digest": "e533069225aa9a58db6309acdb026250014ae30e4893026deccf7d047c0c726b",
+          "integrity_digest": "5f65afb32c47ffe4ec9e2c85e383964344f7d87e1f506620585f0f0057d51ce8"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "3b57dd2b-442e-4ee2-af52-e750f6ce48c5",
+          "originating_attempt": 1,
+          "path": "live-m42-repair-run.edits/attempt-01-3b57dd2b-442e-4ee2-af52-e750f6ce48c5.json",
+          "edit_candidate_digest": "7f606bf9af2f9b10fcd1f53a1483116047dcea06acb18f9a8de8759c4c0114c3",
+          "integrity_digest": "24e5db5b5ce419c963fd26a80faca3e5c7b9cedf088a89552c75198580ca012b"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": false,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "a65e0a42-fe8f-4500-a00d-972a4a48cb93",
+        "failure": {
+          "failure_id": "faa40d78-52bf-4df2-85ec-c047c8aa6f4c",
+          "repair_id": "a65e0a42-fe8f-4500-a00d-972a4a48cb93",
+          "candidate_id": "2442be34-4bc2-46af-a398-9b83819d2ffa",
+          "candidate_digest": "e533069225aa9a58db6309acdb026250014ae30e4893026deccf7d047c0c726b",
+          "candidate_field_digests": {
+            "rationale": "54aef658b3cb38076db5a1661495358a9341888b13acd4a5719b78117256395a",
+            "source_edit": "e6ef6865fc0ebdd3e3342c3f93b2a1a3219bec83f2008af403deeaa3fc89eb41",
+            "regression_test": "122ae7de74103ae6f3d3a1b93a4f0c43bc8a6ca9c4f0f24e5ae5e9a641a0bc56",
+            "optional_policy_artifact": "02c8891b8eb6ec9b032bc48b68c7e0c48c282a58f752fb10c683f70724fd99d2"
+          },
+          "candidate_field_lengths": {
+            "rationale": 482,
+            "source_edit": 2789,
+            "regression_test": 1167,
+            "optional_policy_artifact": 228
+          },
+          "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+          "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+          "evidence_ids": [
+            "d255fad0-2372-41d7-911f-2ad81bc6f476",
+            "04506a0c-3292-410f-84f1-c652a6a988c7",
+            "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+            "32577f7f-72fb-4527-9de7-ba734682d92e",
+            "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "moonshotai/Kimi-K2.7-Code",
+          "target_path": "victims/customer_support/agent.py",
+          "target_symbol": "CustomerSupportAgent.chat",
+          "source_hash": "4c4e554bb8a0a86b898f429183cacaa2271c9d8c94ce91bf3f1dfabcaf388e58",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "compile",
+          "failure_code": "compile_failed",
+          "message": "Patched Python source did not compile.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+            "exit_code": 1,
+            "timed_out": false,
+            "stdout": "*** Error compiling 'victims/customer_support/agent.py'...\nSorry: IndentationError: unexpected indent (agent.py, line 49)\n",
+            "stderr": "",
+            "workspace_id": "5b6c5818-2083-4385-b272-dc518489556b"
+          },
+          "attempt": 1,
+          "created_at": "2026-09-29T04:31:47.997058Z"
+        },
+        "proof_id": null,
+        "workspace_id": "5b6c5818-2083-4385-b272-dc518489556b",
+        "edit_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-962e598058c0b896",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 3609,
+          "prompt_tokens": 2078,
+          "completion_tokens": 777,
+          "total_tokens": 2855
+        },
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-86c7845b6379dc4f",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1213,
+          "prompt_tokens": 2200,
+          "completion_tokens": 271,
+          "total_tokens": 2471
+        },
+        "started_at": "2026-09-29T04:31:39.009879Z",
+        "completed_at": "2026-09-29T04:31:48.041934Z",
+        "duration_seconds": 9.031791544010048
+      },
+      {
+        "attempt": 2,
+        "candidate_id": "971a119f-00b3-4c98-bd58-1522c93532f0",
+        "previous_failure_id": "faa40d78-52bf-4df2-85ec-c047c8aa6f4c",
+        "provider": "nebius_token_factory",
+        "model": "moonshotai/Kimi-K2.7-Code",
+        "candidate_digest": "a51dc1dc82f93fce2cc3d8c17aeb72c8ea06b478aea21f9db5e2384cd97e11db",
+        "candidate_field_digests": {
+          "rationale": "eb95472e69987461f4e48aa1d6ead063941f32b29a7e31ac66041591da3a52e8",
+          "source_edit": "1f8178340278691abc790a7aed93ada8007e09efff30622dcca4ae2cdd835a6f",
+          "regression_test": "a78ae166c2c8f913ee6297f39b80cb484eda913cd1b21a1872213fdf2d1c34da",
+          "optional_policy_artifact": "58aa99803a1e71e53398f328f99ba3537975fe59d10c97c6a7f75d6cac63d3ca"
+        },
+        "candidate_field_lengths": {
+          "rationale": 616,
+          "source_edit": 2205,
+          "regression_test": 1147,
+          "optional_policy_artifact": 249
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "971a119f-00b3-4c98-bd58-1522c93532f0",
+          "attempt_number": 2,
+          "path": "live-m42-repair-run.candidates/attempt-02-971a119f-00b3-4c98-bd58-1522c93532f0.json",
+          "candidate_digest": "a51dc1dc82f93fce2cc3d8c17aeb72c8ea06b478aea21f9db5e2384cd97e11db",
+          "integrity_digest": "96e50422fb94b08a9a9221a4803eaeee6a621d300421d70f5615951ebcf55265"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "41279b01-fcf8-4dee-ac76-c7aedfd608ae",
+          "originating_attempt": 2,
+          "path": "live-m42-repair-run.edits/attempt-02-41279b01-fcf8-4dee-ac76-c7aedfd608ae.json",
+          "edit_candidate_digest": "2e13eb98e9b6270f0de90c3fa576f4dd2266dcdaec4b0ac6dbd31644f1346c7d",
+          "integrity_digest": "d3ae220fe70f2061e636461541999eb0176b03d3a78a5109087d6354d4dcb170"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": false,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "1faa1ea3-3e6a-4060-84eb-b5559751b8b3",
+        "failure": {
+          "failure_id": "e774a6f9-9474-49b5-984c-db6e8e7ad7f1",
+          "repair_id": "1faa1ea3-3e6a-4060-84eb-b5559751b8b3",
+          "candidate_id": "971a119f-00b3-4c98-bd58-1522c93532f0",
+          "candidate_digest": "a51dc1dc82f93fce2cc3d8c17aeb72c8ea06b478aea21f9db5e2384cd97e11db",
+          "candidate_field_digests": {
+            "rationale": "eb95472e69987461f4e48aa1d6ead063941f32b29a7e31ac66041591da3a52e8",
+            "source_edit": "1f8178340278691abc790a7aed93ada8007e09efff30622dcca4ae2cdd835a6f",
+            "regression_test": "a78ae166c2c8f913ee6297f39b80cb484eda913cd1b21a1872213fdf2d1c34da",
+            "optional_policy_artifact": "58aa99803a1e71e53398f328f99ba3537975fe59d10c97c6a7f75d6cac63d3ca"
+          },
+          "candidate_field_lengths": {
+            "rationale": 616,
+            "source_edit": 2205,
+            "regression_test": 1147,
+            "optional_policy_artifact": 249
+          },
+          "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+          "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+          "evidence_ids": [
+            "d255fad0-2372-41d7-911f-2ad81bc6f476",
+            "04506a0c-3292-410f-84f1-c652a6a988c7",
+            "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+            "32577f7f-72fb-4527-9de7-ba734682d92e",
+            "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "moonshotai/Kimi-K2.7-Code",
+          "target_path": "victims/customer_support/agent.py",
+          "target_symbol": "CustomerSupportAgent.chat",
+          "source_hash": "4c4e554bb8a0a86b898f429183cacaa2271c9d8c94ce91bf3f1dfabcaf388e58",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "compile",
+          "failure_code": "compile_failed",
+          "message": "Patched Python source did not compile.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+            "exit_code": 1,
+            "timed_out": false,
+            "stdout": "*** Error compiling 'victims/customer_support/agent.py'...\nSorry: IndentationError: unexpected indent (agent.py, line 40)\n",
+            "stderr": "",
+            "workspace_id": "3774ed4b-7ea7-40e2-a0a2-bea2e637f4c4"
+          },
+          "attempt": 2,
+          "created_at": "2026-09-29T04:31:56.638364Z"
+        },
+        "proof_id": null,
+        "workspace_id": "3774ed4b-7ea7-40e2-a0a2-bea2e637f4c4",
+        "edit_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-8ca52bb2db0bfc00",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 3171,
+          "prompt_tokens": 3244,
+          "completion_tokens": 695,
+          "total_tokens": 3939
+        },
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-8b887edf86ee110a",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1199,
+          "prompt_tokens": 2382,
+          "completion_tokens": 279,
+          "total_tokens": 2661
+        },
+        "started_at": "2026-09-29T04:31:48.059408Z",
+        "completed_at": "2026-09-29T04:31:56.680815Z",
+        "duration_seconds": 8.621169998994446
+      },
+      {
+        "attempt": 3,
+        "candidate_id": "6a64deaf-c0a5-48d7-ada2-83a8e1701f62",
+        "previous_failure_id": "e774a6f9-9474-49b5-984c-db6e8e7ad7f1",
+        "provider": "nebius_token_factory",
+        "model": "moonshotai/Kimi-K2.7-Code",
+        "candidate_digest": "c08671c4191f8005c3df9b7ef69ff1eb06044d706083b536803aeb70b2248b58",
+        "candidate_field_digests": {
+          "rationale": "bbafd0fc656200fea0852d282b9f49886ad6ecdc41b46428abee477b20cf1716",
+          "source_edit": "e6a82c9b793b367d23478afc871115d9b526245ffbb370d24109eaecf7df68ea",
+          "regression_test": "d8ec5e04c87f30c6893c8039abf4c1747d9a70eadc498b70034b52d171d23574",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 372,
+          "source_edit": 1980,
+          "regression_test": 1400,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "6a64deaf-c0a5-48d7-ada2-83a8e1701f62",
+          "attempt_number": 3,
+          "path": "live-m42-repair-run.candidates/attempt-03-6a64deaf-c0a5-48d7-ada2-83a8e1701f62.json",
+          "candidate_digest": "c08671c4191f8005c3df9b7ef69ff1eb06044d706083b536803aeb70b2248b58",
+          "integrity_digest": "14b09e62fda56af8306c08bd9b666b7e18ac05efd8195463f10d15993b40abfb"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "86f7d895-b168-4fa2-843d-4dc8f90be7f1",
+          "originating_attempt": 3,
+          "path": "live-m42-repair-run.edits/attempt-03-86f7d895-b168-4fa2-843d-4dc8f90be7f1.json",
+          "edit_candidate_digest": "085394bf794c5bafaa5dbc597659ef123ca017622d3951c9d220d977aa9eb409",
+          "integrity_digest": "82133a3a3f4280ff5ea362a4610d5059d70996df38d6e6e8db1a14ad1cf733a4"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": false,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "d3727d32-a14a-47ab-ae8a-4c9ff0c1d03b",
+        "failure": {
+          "failure_id": "83701f2f-cb3d-4e4e-908b-56cecdc9f4bb",
+          "repair_id": "d3727d32-a14a-47ab-ae8a-4c9ff0c1d03b",
+          "candidate_id": "6a64deaf-c0a5-48d7-ada2-83a8e1701f62",
+          "candidate_digest": "c08671c4191f8005c3df9b7ef69ff1eb06044d706083b536803aeb70b2248b58",
+          "candidate_field_digests": {
+            "rationale": "bbafd0fc656200fea0852d282b9f49886ad6ecdc41b46428abee477b20cf1716",
+            "source_edit": "e6a82c9b793b367d23478afc871115d9b526245ffbb370d24109eaecf7df68ea",
+            "regression_test": "d8ec5e04c87f30c6893c8039abf4c1747d9a70eadc498b70034b52d171d23574",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 372,
+            "source_edit": 1980,
+            "regression_test": 1400,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+          "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+          "evidence_ids": [
+            "d255fad0-2372-41d7-911f-2ad81bc6f476",
+            "04506a0c-3292-410f-84f1-c652a6a988c7",
+            "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+            "32577f7f-72fb-4527-9de7-ba734682d92e",
+            "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "moonshotai/Kimi-K2.7-Code",
+          "target_path": "victims/customer_support/agent.py",
+          "target_symbol": "CustomerSupportAgent.chat",
+          "source_hash": "4c4e554bb8a0a86b898f429183cacaa2271c9d8c94ce91bf3f1dfabcaf388e58",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "regression_execution",
+          "failure_code": "generated_regression_failed",
+          "message": "The exact generated regression test failed.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m pytest -q .gauntlet/generated_tests/test_generated_repair.py",
+            "exit_code": 2,
+            "timed_out": false,
+            "stdout": "\n==================================== ERRORS ====================================\n_____ ERROR collecting .gauntlet/generated_tests/test_generated_repair.py ______\nImportError while importing test module '/private/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-83yoroil/.gauntlet/generated_tests/test_generated_repair.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n.gauntlet/generated_tests/test_generated_repair.py:3: in <module>\n    from victims.customer_support.models import ChatResponse\nE   ModuleNotFoundError: No module named 'victims.customer_support.models'\n=========================== short test summary info ============================\nERROR .gauntlet/generated_tests/test_generated_repair.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.31s\n",
+            "stderr": "",
+            "workspace_id": "cea0e0fe-8ad2-4dba-bc3c-3cb46621bcc6"
+          },
+          "attempt": 3,
+          "created_at": "2026-09-29T04:32:03.973650Z"
+        },
+        "proof_id": null,
+        "workspace_id": "cea0e0fe-8ad2-4dba-bc3c-3cb46621bcc6",
+        "edit_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-8bb9f7ed7b7baa78",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 2420,
+          "prompt_tokens": 3177,
+          "completion_tokens": 554,
+          "total_tokens": 3731
+        },
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-a4f334f75b6956ce",
+          "returned_model": "moonshotai/Kimi-K2.7-Code",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1452,
+          "prompt_tokens": 2367,
+          "completion_tokens": 336,
+          "total_tokens": 2703
+        },
+        "started_at": "2026-09-29T04:31:56.694225Z",
+        "completed_at": "2026-09-29T04:32:04.025429Z",
+        "duration_seconds": 7.330992192000849
+      }
+    ],
+    "final_failure": {
+      "failure_id": "83701f2f-cb3d-4e4e-908b-56cecdc9f4bb",
+      "repair_id": "d3727d32-a14a-47ab-ae8a-4c9ff0c1d03b",
+      "candidate_id": "6a64deaf-c0a5-48d7-ada2-83a8e1701f62",
+      "candidate_digest": "c08671c4191f8005c3df9b7ef69ff1eb06044d706083b536803aeb70b2248b58",
+      "candidate_field_digests": {
+        "rationale": "bbafd0fc656200fea0852d282b9f49886ad6ecdc41b46428abee477b20cf1716",
+        "source_edit": "e6a82c9b793b367d23478afc871115d9b526245ffbb370d24109eaecf7df68ea",
+        "regression_test": "d8ec5e04c87f30c6893c8039abf4c1747d9a70eadc498b70034b52d171d23574",
+        "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "candidate_field_lengths": {
+        "rationale": 372,
+        "source_edit": 1980,
+        "regression_test": 1400,
+        "optional_policy_artifact": 4
+      },
+      "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+      "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+      "evidence_ids": [
+        "d255fad0-2372-41d7-911f-2ad81bc6f476",
+        "04506a0c-3292-410f-84f1-c652a6a988c7",
+        "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+        "32577f7f-72fb-4527-9de7-ba734682d92e",
+        "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+      ],
+      "provider": "nebius_token_factory",
+      "model": "moonshotai/Kimi-K2.7-Code",
+      "target_path": "victims/customer_support/agent.py",
+      "target_symbol": "CustomerSupportAgent.chat",
+      "source_hash": "4c4e554bb8a0a86b898f429183cacaa2271c9d8c94ce91bf3f1dfabcaf388e58",
+      "failure_type": "indirect_prompt_injection",
+      "failure_stage": "regression_execution",
+      "failure_code": "generated_regression_failed",
+      "message": "The exact generated regression test failed.",
+      "diagnostics": {
+        "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m pytest -q .gauntlet/generated_tests/test_generated_repair.py",
+        "exit_code": 2,
+        "timed_out": false,
+        "stdout": "\n==================================== ERRORS ====================================\n_____ ERROR collecting .gauntlet/generated_tests/test_generated_repair.py ______\nImportError while importing test module '/private/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-83yoroil/.gauntlet/generated_tests/test_generated_repair.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n.gauntlet/generated_tests/test_generated_repair.py:3: in <module>\n    from victims.customer_support.models import ChatResponse\nE   ModuleNotFoundError: No module named 'victims.customer_support.models'\n=========================== short test summary info ============================\nERROR .gauntlet/generated_tests/test_generated_repair.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.31s\n",
+        "stderr": "",
+        "workspace_id": "cea0e0fe-8ad2-4dba-bc3c-3cb46621bcc6"
+      },
+      "attempt": 3,
+      "created_at": "2026-09-29T04:32:03.973650Z"
+    },
+    "safe_failure_summary": "regression_execution: The exact generated regression test failed.",
+    "started_at": "2026-09-29T04:31:38.963638Z",
+    "completed_at": "2026-09-29T04:32:04.039806Z",
+    "duration_seconds": 25.07399235801131,
+    "original_repository_unchanged": true
+  },
+  "result_digest": "1a68cb9aba9bc50f0bab97bbe10f828777e833f500792686afec6c3d617a6386"
+}
