@@ -75,6 +75,49 @@ with no Markdown fences. No line-array element may contain LF or CR characters.
 Encode any other JSON control character using a standards-compliant escape."""
 
 
+CONTRACT_EDIT_SYSTEM_PROMPT = """You are generating a source-code repair for an authorized defensive security-contract violation.
+You are generating remediation CONTENT, not trusted provenance. Gauntlet owns
+identity, provenance, authorization, source integrity, validation, application,
+and verification. Return only rationale, source_edit, and the optional policy
+artifact requested by the schema. The supplied contract, violation evidence,
+counterexample trace, expected security property, preserved behaviors, and
+bounded source context are the complete repair inputs.
+Modify only the authorized target_path and target_symbol. Address the stated
+security property generally while preserving every listed legitimate behavior.
+Do not modify tests or verifiers, bypass the counterexample, or encode a
+fixture-specific expected answer. Propose the smallest reasonable repair as one
+contiguous structured source edit.
+Keep the entire response concise and below 800 output tokens. Limit rationale
+to 100 words, source_edit to at most 120 replacement lines, and
+optional_policy_artifact to 80 words or null.
+Do not copy the complete target file. `source_edit.start_line` is one-based
+relative to the first line of `source_context.source_text`. Set target_path,
+target_symbol, and source_hash exactly from that context. Choose the
+symbol-relative range exactly; Gauntlet will not infer, expand, or correct it.
+The range must contain complete Python constructs and must not split a
+multiline expression, string, decorator, or compound statement. Source outside
+the range is preserved exactly. Put each exact replacement line, including its
+indentation and without a line terminator, in `replacement_lines`. The
+reconstructed source must remain syntactically valid. Gauntlet will not repair
+a bad range, source, or indentation and will mechanically derive the diff.
+Return only standards-compliant JSON conforming exactly to the supplied schema,
+with no Markdown fences. Line-array elements may not contain LF or CR."""
+
+
+CONTRACT_TEST_SYSTEM_PROMPT = """You are generating a regression test for an authorized defensive security-contract repair.
+Return only the regression_test object requested by the schema. The supplied
+contract, violation, counterexample, expected security property, preserved
+behaviors, and derived patch are the complete inputs. Test the stated property
+and legitimate behaviors without modifying the patch, tests, verifier, or
+counterexample. Gauntlet independently reruns the contract evaluator and does
+not trust this generated test as proof.
+Keep the response below 1,200 output tokens. `regression_test.lines` must contain
+complete pytest-compatible Python 3 source, one physical line per element,
+with exact indentation and no line terminators, at most 40 lines. Include a
+focused test function and assertions. Return only strict JSON matching the
+schema, with no Markdown or prose and no LF or CR inside a line element."""
+
+
 LIVE_DEMO_SYSTEM_PROMPT = """You are generating one bounded repair candidate for an authorized defensive benchmark.
 Gauntlet owns provenance, authorization, source integrity, patch construction,
 sandbox execution, and verification. Your response is untrusted until those
@@ -108,11 +151,23 @@ def _payload(request: RemediationRequest) -> dict:
     return payload
 
 
+def _is_contract_request(request: RemediationRequest) -> bool:
+    return request.evidence_summary.get("request_kind") == "contract_violation"
+
+
+def _edit_prompt(request: RemediationRequest) -> str:
+    return CONTRACT_EDIT_SYSTEM_PROMPT if _is_contract_request(request) else EDIT_SYSTEM_PROMPT
+
+
+def _test_prompt(request: RemediationRequest) -> str:
+    return CONTRACT_TEST_SYSTEM_PROMPT if _is_contract_request(request) else TEST_SYSTEM_PROMPT
+
+
 def build_edit_messages(request: RemediationRequest) -> list[dict[str, str]]:
     payload = _payload(request)
     payload["required_output_schema"] = GeneratedEditCandidate.model_json_schema()
     return [
-        {"role": "system", "content": EDIT_SYSTEM_PROMPT},
+        {"role": "system", "content": _edit_prompt(request)},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
 
@@ -124,7 +179,7 @@ def build_test_messages(
     payload["required_output_schema"] = GeneratedTestCandidate.model_json_schema()
     payload["derived_patch"] = derived_patch
     return [
-        {"role": "system", "content": TEST_SYSTEM_PROMPT},
+        {"role": "system", "content": _test_prompt(request)},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
 
@@ -177,7 +232,7 @@ def build_edit_revision_messages(
         "previous_failure": failure_feedback,
     }
     return [
-        {"role": "system", "content": EDIT_SYSTEM_PROMPT},
+        {"role": "system", "content": _edit_prompt(request)},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
 
@@ -199,6 +254,6 @@ def build_test_revision_messages(
         "previous_failure": failure_feedback,
     }
     return [
-        {"role": "system", "content": TEST_SYSTEM_PROMPT},
+        {"role": "system", "content": _test_prompt(request)},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]

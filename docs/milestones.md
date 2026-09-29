@@ -28,6 +28,7 @@ customer-support, and personalization semantics.
 | --- | --- | --- |
 | M6 — Generic Security Contract Foundation | COMPLETE | Normalize execution evidence and evaluate P100 behind a reusable contract boundary. |
 | M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
+| M7.5 — Generic Repair Handoff | COMPLETE (OFFLINE) | Convert a violated contract into a reusable repair request and independently re-evaluate the contract after exact sandbox application. |
 | M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
@@ -71,6 +72,31 @@ repair ingress remains P100 `AttackTrace`/source-context-specific, so M7 does
 not force P300 into it or claim a model-generated repair. A future generic
 repair-handoff milestone must preserve proposal, application, and independent
 verification as separate stages.
+
+### M7.5 — Generic Repair Handoff
+
+Status: COMPLETE offline. No provider request was made.
+
+M7.5 introduces a serializable contract repair request containing the contract,
+structured violation evidence, normalized counterexample trace, explicitly
+authorized and hash-bound source context, expected post-repair property, and
+legitimate behaviors to preserve. A generic adapter feeds that request into the
+existing structured candidate generation and validation path. The legacy P100
+`AttackTrace` entry point remains unchanged and delegates to the same shared
+proposal path.
+
+P300 owns its source authorization and post-repair scenario definitions. After
+the exact proposal patch is applied and compiled in a disposable workspace,
+the P300 adapter reruns normalized executions and the trusted contract evaluator
+for the original high-value violation, approval-before ordering,
+approval-after rejection, low-value utility, and an alternate configured
+threshold. Generic repair orchestration contains no refund action, price, or
+customer-support rules. The offline structural provider deliberately proposes
+an ineffective comment-only edit; independent re-verification correctly returns
+`NOT_VERIFIED`, demonstrating that candidate generation is not proof.
+
+The generic live request is prepared, but a live provider call remains a
+separately authorized experiment. M8 has not started.
 
 ### M8 — Product Demo Flow
 

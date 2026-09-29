@@ -311,8 +311,25 @@ counterexample otherwise. An approval recorded after an effect cannot satisfy
 the invariant.
 
 No real transaction, provider call, or model judgment is involved in contract
-evaluation. The existing repair-generation ingress still consumes the older
-P100 `AttackTrace` and authorized source-context allowlist, so M7 does not
-pretend that it can generate a P300 patch through that path. The fixture's
-approval-enforcing mode demonstrates the expected post-repair behavior without
-claiming a model-proposed or pipeline-applied repair.
+evaluation. The fixture's approval-enforcing mode demonstrates the expected
+post-repair behavior without claiming a model-proposed or pipeline-applied
+repair.
+
+## Generic Repair Handoff
+
+M7.5 converts `ContractEvaluation(VIOLATED)` into a serializable
+`ContractRepairRequest`. The request binds the declared contract, structured
+violation evidence, normalized counterexample trace, an explicit source
+authorization, the exact bounded source hash, the expected property, and
+behaviors to preserve. It then reuses the existing two-call structured
+edit/test proposal and deterministic candidate-validation path. P100 retains
+its historical `AttackTrace` adapter and delegates to the same shared proposal
+path; new properties do not manufacture a P100 trace.
+
+Application and proof remain separate. Generic execution applies the exact
+validated diff in a disposable workspace, compiles it, and invokes a trusted
+property adapter. The P300 adapter reruns normalized executions and the same
+effect-authorization evaluator used for detection. Candidate rationale and
+generated tests never determine the contract verdict. Property-specific target
+selection and verification cases remain beside the property adapter, leaving
+the generic handoff free of refund, price, and customer-support rules.
