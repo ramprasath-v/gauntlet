@@ -1796,3 +1796,38 @@ complete offline suite was
 `479f47757ec0e06af30efd95beb40af1383e00fbb7bdc0c7bea2f278c61950c3`.
 The generated patches never touched the real repository. The complete suite
 passed 149 tests with zero failures.
+
+## Two-call source-transcription boundary refactor
+
+Date: 2026-09-29 UTC. No provider request was made during this work. On branch
+`two-call-remediation`, the preceding clean live workflow reached the separated
+edit call but could not reach test generation: two edit calls ended at their
+2,048-token limit with null content, and the third decoded edit failed
+`source_identity / expected_original_lines_mismatch`.
+
+The two-call design remains intact. Call 1 still owns the rationale, target
+claims, source-hash claim, exact relative start line, deletion count, exact
+replacement lines, and optional policy artifact. Call 2 still receives only a
+validated mechanically derived patch and generates the regression-test line
+array. A call-1 validation failure still prevents call 2 from running.
+
+The current call-1 schema no longer asks the model to transcribe trusted
+original lines. Validation still checks path, symbol, the candidate source-hash
+claim, the current trusted source hash, and complete containment of the exact
+model-selected range. Only after those gates pass does Gauntlet derive the
+selected original slice from trusted source and mechanically splice the exact
+replacement lines. It does not infer, expand, correct, normalize, format, or
+repair the range or replacement.
+
+New combined candidate evidence uses `gauntlet.repair-candidate.v3`. Version
+one and version two retain schema-specific loaders and their original digest
+semantics; the v2 loader preserves historical `expected_original_lines` solely
+for faithful evidence reproduction.
+
+Focused two-call, structured-edit, evidence, remediation, retry, and clean-
+benchmark tests passed 108 cases. The complete offline suite passed 171 tests
+with zero failures. Tests establish that invalid syntax reaches compilation,
+ineffective repairs reach P100, destructive repairs reach P200 or compatibility,
+call 2 is skipped after call-1 validation failure, historical evidence loads,
+and the real repository remains unchanged. No victim, known-good repair,
+benchmark-specific hint, downstream gate, or retry policy changed.

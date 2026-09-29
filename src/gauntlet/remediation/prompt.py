@@ -23,18 +23,19 @@ the existing deterministic test-double switch as the repair. Address the
 identified untrusted-tool-data boundary generally. Propose the smallest
 reasonable repair as one contiguous structured source edit.
 Keep the entire response concise and below 800 output tokens. Limit rationale
-to 100 words, source_edit to at most 120 expected original lines and 120
-replacement lines, and optional_policy_artifact to 80 words or null.
+to 100 words, source_edit to at most 120 replacement lines, and
+optional_policy_artifact to 80 words or null.
 Do not copy the complete target file. `source_edit.start_line` is one-based
 relative to the first line of the supplied `source_context.source_text`, which
 is exactly the authorized target symbol. Set target_path, target_symbol, and
-source_hash exactly from the supplied context. `delete_line_count` must equal
-the number of `expected_original_lines`. Those expected lines must exactly
-match the selected source slice. Put every proposed replacement source line,
-with its exact indentation and no line terminator, in `replacement_lines`. Use
-an empty list only when deleting source. Gauntlet will only join these explicit
-lines and mechanically derive a unified diff; it will not complete or repair
-the edit.
+source_hash exactly from the supplied context. Choose `start_line` and
+`delete_line_count` exactly; Gauntlet will not infer or correct the requested
+range. Put every proposed replacement source line, with its exact indentation
+and no line terminator, in `replacement_lines`. Use an empty list only when
+deleting source. After authorization, hash, and range validation, Gauntlet will
+read the original lines for that exact range from its trusted source, join only
+the explicit replacement lines, and mechanically derive a unified diff. It
+will not complete or repair the edit.
 Return only standards-compliant JSON conforming exactly to the supplied schema,
 with no Markdown fences. No source-edit line-array element may contain LF or CR
 characters. Encode any other JSON control character using a standards-compliant

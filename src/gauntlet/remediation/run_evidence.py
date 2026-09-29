@@ -84,7 +84,9 @@ def load_repair_run(path: Path) -> RepairRunResult:
         if (
             result.status == "VERIFIED"
             and attempt.attempt == result.successful_attempt
-            and artifact.schema_version == "gauntlet.repair-candidate.v2"
+            and artifact.schema_version in {
+                "gauntlet.repair-candidate.v2", "gauntlet.repair-candidate.v3"
+            }
             and (
                 artifact.derived_patch != result.final_proposal.patch
                 or artifact.derived_regression_test

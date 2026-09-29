@@ -186,7 +186,6 @@ def edit_for_changed_source(request, changed: str) -> StructuredSourceEdit:
         source_hash=request.repair_context.source_hash,
         start_line=prefix - symbol_start + 1,
         delete_line_count=original_end - prefix,
-        expected_original_lines=original_lines[prefix:original_end],
         replacement_lines=changed_lines[prefix:changed_end],
     )
 
@@ -236,6 +235,35 @@ async def utility_failure_edit(request):
     return await changed_edit_raw(
         request, source_edit=edit_for_changed_source(request, changed)
     )
+
+
+async def out_of_symbol_edit(request):
+    valid = parse_generated_edit_candidate(await valid_edit_raw(request))
+    return valid.model_copy(update={
+        "source_edit": valid.source_edit.model_copy(
+            update={"start_line": 100_000}
+        )
+    }).model_dump_json()
+
+
+async def test_call_two_does_not_run_when_call_one_validation_fails(
+    serialized_trace
+):
+    provider = ScriptedRetryProvider(
+        edit_outputs=[out_of_symbol_edit] * 3,
+        test_outputs=[],
+    )
+
+    result = await M42RepairOrchestrator(ROOT, provider).run(serialized_trace)
+
+    assert isinstance(result, RepairRunFailed)
+    assert provider.edit_calls == 3
+    assert provider.test_calls == 0
+    assert all(attempt.edit_validation == "FAIL" for attempt in result.attempts)
+    assert all(attempt.test_provider_call == "NOT_RUN" for attempt in result.attempts)
+    assert all(attempt.proposal_execution == "NOT_RUN" for attempt in result.attempts)
+    assert result.final_failure.failure_stage == "patch_authorization"
+    assert result.final_failure.failure_code == "edit_range_outside_symbol"
 
 
 async def test_validation_failure_retries_test_only_and_persists_verified_run(

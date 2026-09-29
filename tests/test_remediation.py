@@ -145,7 +145,6 @@ def valid_candidate(context, **changes):
             source_hash=context.source_hash,
             start_line=2,
             delete_line_count=0,
-            expected_original_lines=[],
             replacement_lines=["        # model-proposed boundary marker"],
         ),
         "regression_test": StructuredRegressionTest(lines=[
@@ -846,9 +845,11 @@ def test_prompts_use_structured_lines_without_patch_or_multiline_test_strings():
         "rationale", "source_edit", "optional_policy_artifact",
     }
     assert "source_edit.start_line" in EDIT_SYSTEM_PROMPT
-    assert "expected_original_lines" in EDIT_SYSTEM_PROMPT
+    assert "expected_original_lines" not in EDIT_SYSTEM_PROMPT
     assert "replacement_lines" in EDIT_SYSTEM_PROMPT
     assert '"patch"' not in EDIT_SYSTEM_PROMPT
+    source_edit_schema = edit_schema["$defs"]["StructuredSourceEdit"]
+    assert "expected_original_lines" not in source_edit_schema["properties"]
     test_schema = GeneratedTestCandidate.model_json_schema()
     assert set(test_schema["properties"]) == {"regression_test"}
     assert "regression_test.lines" in TEST_SYSTEM_PROMPT

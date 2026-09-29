@@ -15,7 +15,8 @@ from gauntlet.remediation.models import (
 
 
 LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v1"
-CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v2"
+STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v2"
+CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v3"
 CANDIDATE_FIELDS = (
     "rationale", "source_edit", "regression_test", "optional_policy_artifact",
 )
@@ -45,6 +46,25 @@ class LegacyGeneratedRepairCandidate(StrictModel):
     optional_policy_artifact: str | None = None
 
 
+class LegacyStructuredSourceEditV2(StrictModel):
+    """Historical v2 source-edit contract retained for evidence loading."""
+
+    target_path: str
+    target_symbol: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    start_line: int
+    delete_line_count: int
+    expected_original_lines: list[str]
+    replacement_lines: list[str]
+
+
+class LegacyGeneratedRepairCandidateV2(StrictModel):
+    rationale: str
+    source_edit: LegacyStructuredSourceEditV2
+    regression_test: StructuredRegressionTest
+    optional_policy_artifact: str | None = None
+
+
 def _legacy_candidate_identity(
     candidate: LegacyGeneratedRepairCandidate,
 ) -> tuple[str, dict[str, str]]:
@@ -60,7 +80,8 @@ def _legacy_candidate_identity(
 
 class CandidateArtifactReference(StrictModel):
     schema_version: Literal[
-        "gauntlet.repair-candidate.v1", "gauntlet.repair-candidate.v2"
+        "gauntlet.repair-candidate.v1", "gauntlet.repair-candidate.v2",
+        "gauntlet.repair-candidate.v3",
     ]
     candidate_id: str
     attempt_number: int = Field(ge=1, le=3)
@@ -136,10 +157,8 @@ class LegacyRepairCandidateArtifact(_ArtifactIdentity):
         return self
 
 
-class RepairCandidateArtifact(_ArtifactIdentity):
-    schema_version: Literal["gauntlet.repair-candidate.v2"]
+class _StructuredArtifactFields(_ArtifactIdentity):
     rationale: str
-    source_edit: StructuredSourceEdit
     regression_test: StructuredRegressionTest
     optional_policy_artifact: str | None = None
     derived_patch: str | None = None
@@ -149,21 +168,7 @@ class RepairCandidateArtifact(_ArtifactIdentity):
         default=None, pattern=r"^[0-9a-f]{64}$"
     )
 
-    def candidate(self) -> GeneratedRepairCandidate:
-        return GeneratedRepairCandidate(
-            rationale=self.rationale,
-            source_edit=self.source_edit,
-            regression_test=self.regression_test,
-            optional_policy_artifact=self.optional_policy_artifact,
-        )
-
-    @model_validator(mode="after")
-    def exact_content_and_integrity(self) -> "RepairCandidateArtifact":
-        candidate_digest, field_digests = candidate_identity(self.candidate())
-        if self.candidate_digest != candidate_digest:
-            raise ValueError("Repair candidate integrity failed: candidate_digest")
-        if self.candidate_field_digests != field_digests:
-            raise ValueError("Repair candidate integrity failed: field digests")
+    def _validate_derived_integrity(self) -> None:
         derived = (
             self.derived_patch,
             self.derived_regression_test,
@@ -181,13 +186,65 @@ class RepairCandidateArtifact(_ArtifactIdentity):
                 self.derived_regression_test or ""
             ):
                 raise ValueError("Repair candidate integrity failed: derived regression")
+
+
+class RepairCandidateArtifactV2(_StructuredArtifactFields):
+    schema_version: Literal["gauntlet.repair-candidate.v2"]
+    source_edit: LegacyStructuredSourceEditV2
+
+    def candidate_v2(self) -> LegacyGeneratedRepairCandidateV2:
+        return LegacyGeneratedRepairCandidateV2(
+            rationale=self.rationale,
+            source_edit=self.source_edit,
+            regression_test=self.regression_test,
+            optional_policy_artifact=self.optional_policy_artifact,
+        )
+
+    @model_validator(mode="after")
+    def exact_content_and_integrity(self) -> "RepairCandidateArtifactV2":
+        candidate_digest, field_digests = _legacy_candidate_identity(
+            self.candidate_v2()
+        )
+        if self.candidate_digest != candidate_digest:
+            raise ValueError("Repair candidate integrity failed: candidate_digest")
+        if self.candidate_field_digests != field_digests:
+            raise ValueError("Repair candidate integrity failed: field digests")
+        self._validate_derived_integrity()
+        if self.integrity_digest != _artifact_digest(self):
+            raise ValueError("Repair candidate integrity failed: integrity_digest")
+        return self
+
+
+class RepairCandidateArtifact(_StructuredArtifactFields):
+    schema_version: Literal["gauntlet.repair-candidate.v3"]
+    source_edit: StructuredSourceEdit
+
+    def candidate(self) -> GeneratedRepairCandidate:
+        return GeneratedRepairCandidate(
+            rationale=self.rationale,
+            source_edit=self.source_edit,
+            regression_test=self.regression_test,
+            optional_policy_artifact=self.optional_policy_artifact,
+        )
+
+    @model_validator(mode="after")
+    def exact_content_and_integrity(self) -> "RepairCandidateArtifact":
+        candidate_digest, field_digests = candidate_identity(self.candidate())
+        if self.candidate_digest != candidate_digest:
+            raise ValueError("Repair candidate integrity failed: candidate_digest")
+        if self.candidate_field_digests != field_digests:
+            raise ValueError("Repair candidate integrity failed: field digests")
+        self._validate_derived_integrity()
         if self.integrity_digest != _artifact_digest(self):
             raise ValueError("Repair candidate integrity failed: integrity_digest")
         return self
 
 
 def _artifact_payload(
-    artifact: RepairCandidateArtifact | LegacyRepairCandidateArtifact,
+    artifact: (
+        RepairCandidateArtifact | RepairCandidateArtifactV2
+        | LegacyRepairCandidateArtifact
+    ),
 ) -> str:
     return json.dumps(
         artifact.model_dump(mode="json", exclude={"integrity_digest"}),
@@ -196,7 +253,10 @@ def _artifact_payload(
 
 
 def _artifact_digest(
-    artifact: RepairCandidateArtifact | LegacyRepairCandidateArtifact,
+    artifact: (
+        RepairCandidateArtifact | RepairCandidateArtifactV2
+        | LegacyRepairCandidateArtifact
+    ),
 ) -> str:
     return _digest(_artifact_payload(artifact))
 
@@ -263,12 +323,19 @@ def persist_candidate_artifact(
 
 def load_candidate_artifact(
     path: Path,
-) -> RepairCandidateArtifact | LegacyRepairCandidateArtifact:
+) -> (
+    RepairCandidateArtifact | RepairCandidateArtifactV2
+    | LegacyRepairCandidateArtifact
+):
     raw = path.read_text()
     payload = json.loads(raw)
     if payload.get("schema_version") == LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION:
         return LegacyRepairCandidateArtifact.model_validate_json(raw)
-    return RepairCandidateArtifact.model_validate_json(raw)
+    if payload.get("schema_version") == STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION:
+        return RepairCandidateArtifactV2.model_validate_json(raw)
+    if payload.get("schema_version") == CANDIDATE_ARTIFACT_SCHEMA_VERSION:
+        return RepairCandidateArtifact.model_validate_json(raw)
+    raise ValueError("Unsupported repair candidate artifact schema version")
 
 
 def candidate_artifact_location(
