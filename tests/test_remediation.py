@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
+    KIMI_K27_CODE_MODEL,
     NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_REASONING_DISABLED,
     NebiusAPIError, NebiusCompletionError, NebiusTokenFactoryClient,
@@ -568,6 +569,53 @@ async def test_qwen_provider_disables_thinking_for_bounded_structured_output():
     assert observed["edit_candidate"]["max_tokens"] == 2_048
     assert observed["test_candidate"]["max_tokens"] == 2_048
     assert "reasoning_effort" not in observed["edit_candidate"]
+
+
+async def test_kimi_provider_preserves_frozen_structured_contract_without_unsupported_reasoning_control():
+    observed = {}
+    edit_schema = GeneratedEditCandidate.model_json_schema()
+    test_schema = GeneratedTestCandidate.model_json_schema()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        name = body["response_format"]["json_schema"]["name"]
+        observed[name] = body
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": payloads[name]}}]
+        })
+
+    client = NebiusTokenFactoryClient(NebiusConfig(
+        api_key="synthetic",
+        base_url="https://api.tokenfactory.nebius.com/v1/",
+        model=KIMI_K27_CODE_MODEL,
+    ), transport=httpx.MockTransport(handler))
+    provider = NebiusNemotronRemediationProvider(client)
+    trace = await attack_trace()
+    context = build_source_context(trace.model_dump_json(), ROOT)
+    request = remediation_request(trace, context, provider)
+    fake = FakeRemediationProvider()
+    payloads = {
+        "edit_candidate": await fake.generate_edit(request),
+        "test_candidate": await fake.generate_test(request, derived_patch="---"),
+    }
+
+    await provider.generate_edit(request)
+    await provider.generate_test(request, derived_patch="---")
+
+    for name, prompt, schema in (
+        ("edit_candidate", EDIT_SYSTEM_PROMPT, edit_schema),
+        ("test_candidate", TEST_SYSTEM_PROMPT, test_schema),
+    ):
+        body = observed[name]
+        assert body["model"] == KIMI_K27_CODE_MODEL
+        assert body["messages"][0] == {"role": "system", "content": prompt}
+        assert body["max_tokens"] == 2_048
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": name, "schema": schema},
+        }
+        assert "chat_template_kwargs" not in body
+        assert "reasoning_effort" not in body
 
 
 async def test_lightning_rejects_reasoning_enabled_for_remediation():

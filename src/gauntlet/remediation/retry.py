@@ -15,7 +15,8 @@ from typing import Callable
 from uuid import uuid4
 
 from gauntlet.llm.nebius import (
-    NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL, QWEN_35_MODEL,
+    KIMI_K27_CODE_MODEL, NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL,
+    QWEN_35_MODEL,
 )
 from gauntlet.remediation.candidate_artifact import (
     CANDIDATE_ARTIFACT_SCHEMA_VERSION, EDIT_EVIDENCE_SCHEMA_VERSION,
@@ -51,6 +52,7 @@ from gauntlet.tracing.models import AttackTrace
 MAX_PROVIDER_ATTEMPTS = 3
 FEEDBACK_FIELD_LIMIT = 8_000
 APPROVED_LIVE_REMEDIATION_MODELS = frozenset({
+    KIMI_K27_CODE_MODEL,
     NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_SUPER_MODEL,
     QWEN_35_MODEL,

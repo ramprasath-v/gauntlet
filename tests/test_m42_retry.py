@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
-    NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL, QWEN_35_MODEL,
+    KIMI_K27_CODE_MODEL, NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL,
+    QWEN_35_MODEL,
     NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.candidate_artifact import (
@@ -108,7 +109,8 @@ class ScriptedRetryProvider:
 
 
 @pytest.mark.parametrize("model", [
-    NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL, QWEN_35_MODEL,
+    KIMI_K27_CODE_MODEL, NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL,
+    QWEN_35_MODEL,
 ])
 def test_m42_accepts_approved_live_remediation_models(model):
     provider = ScriptedRetryProvider([], [])
