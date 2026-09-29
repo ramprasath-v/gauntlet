@@ -200,8 +200,8 @@ def edit_for_changed_source(request, changed: str) -> StructuredSourceEdit:
 async def compile_failure_edit(request):
     source = (ROOT / TARGET).read_text()
     changed = source.replace(
-        "    async def chat(self, message: str) -> ChatResponse:",
-        "    async def chat(self, message: str) -> ChatResponse",
+        "        events = [ExecutionEvent(kind=\"user_message\", sequence=1, source=SourceKind.USER, data={\"message\": message})]",
+        "        break",
     )
     return await changed_edit_raw(
         request, source_edit=edit_for_changed_source(request, changed)

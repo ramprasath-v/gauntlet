@@ -1,7 +1,10 @@
 """Deterministic boundary from untrusted repair candidate to trusted result."""
 import ast
 import difflib
+import io
 import json
+import textwrap
+import tokenize
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
@@ -177,6 +180,83 @@ def _resolve_symbol_source(
     return source, full_lines, symbol_lines, symbol_start, symbol_end
 
 
+_COMPOUND_STATEMENTS = (
+    ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith,
+    ast.Try, ast.Match, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+)
+
+
+def _python_range_boundary_failure(
+    symbol_lines: list[str], *, start_line: int, delete_line_count: int,
+) -> tuple[str, dict[str, str | int | bool | None]] | None:
+    """Classify exact model-selected boundaries without changing them."""
+    source = "\n".join(symbol_lines) + "\n"
+    end_line = start_line + delete_line_count - 1
+    spans: list[tuple[int, int, str]] = []
+    stack: list[tuple[str, int]] = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.OP and token.string in "([{":
+                stack.append((token.string, token.start[0]))
+            elif token.type == tokenize.OP and token.string in ")]}" and stack:
+                opening, opening_line = stack.pop()
+                spans.append((opening_line, token.end[0], f"delimiter_{opening}"))
+            elif token.type == tokenize.STRING and token.start[0] < token.end[0]:
+                spans.append((token.start[0], token.end[0], "multiline_string"))
+    except (IndentationError, tokenize.TokenError):
+        return None
+
+    for opening_line, closing_line, construct in spans:
+        start_splits = opening_line < start_line <= closing_line
+        end_splits = delete_line_count > 0 and opening_line <= end_line < closing_line
+        if start_splits or end_splits:
+            return "edit_range_splits_python_construct", {
+                "start_line": start_line,
+                "delete_line_count": delete_line_count,
+                "selected_end_line": end_line,
+                "construct": construct,
+                "construct_start_line": opening_line,
+                "construct_end_line": closing_line,
+                "split_boundary": "start" if start_splits else "end",
+            }
+
+    if start_line > 1 and symbol_lines[start_line - 2].rstrip().endswith("\\"):
+        return "edit_range_splits_python_construct", {
+            "start_line": start_line, "delete_line_count": delete_line_count,
+            "selected_end_line": end_line, "construct": "explicit_continuation",
+            "split_boundary": "start",
+        }
+    if (delete_line_count > 0
+            and symbol_lines[end_line - 1].rstrip().endswith("\\")):
+        return "edit_range_splits_python_construct", {
+            "start_line": start_line, "delete_line_count": delete_line_count,
+            "selected_end_line": end_line, "construct": "explicit_continuation",
+            "split_boundary": "end",
+        }
+
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if (not isinstance(node, _COMPOUND_STATEMENTS)
+                or node.end_lineno is None
+                or (node.lineno == 1 and node.end_lineno == len(symbol_lines))):
+            continue
+        if (delete_line_count > 0 and start_line <= node.lineno <= end_line
+                and end_line < node.end_lineno):
+            return "edit_range_splits_compound_statement", {
+                "start_line": start_line,
+                "delete_line_count": delete_line_count,
+                "selected_end_line": end_line,
+                "construct": type(node).__name__,
+                "construct_start_line": node.lineno,
+                "construct_end_line": node.end_lineno,
+                "split_boundary": "end",
+            }
+    return None
+
+
 def validate_source_edit(
     edit: GeneratedEditCandidate,
     repair_context: RepairContext,
@@ -246,6 +326,21 @@ def validate_source_edit(
             }, attempt=attempt,
         )
 
+    boundary_failure = _python_range_boundary_failure(
+        symbol_lines, start_line=source_edit.start_line,
+        delete_line_count=source_edit.delete_line_count,
+    )
+    if boundary_failure is not None:
+        code, diagnostics = boundary_failure
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="patch_authorization", code=code,
+            message=(
+                "Structured edit range splits an incomplete Python source "
+                "construct; Gauntlet will not adjust the model-selected range."
+            ), diagnostics=diagnostics, attempt=attempt,
+        )
+
     patched_symbol_lines = (
         symbol_lines[:start] + source_edit.replacement_lines + symbol_lines[end:]
     )
@@ -259,6 +354,23 @@ def validate_source_edit(
             stage="candidate_validation", code="source_edit_noop",
             message="Structured edit does not change the authorized source.",
             diagnostics={"start_line": source_edit.start_line}, attempt=attempt,
+        )
+
+    try:
+        ast.parse(patched_source)
+    except SyntaxError as exc:
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="candidate_validation", code="reconstructed_source_invalid_python",
+            message=(
+                "Exact structured edit reconstruction is not valid Python; "
+                "Gauntlet will not repair candidate source or indentation."
+            ),
+            diagnostics={
+                "syntax_message": exc.msg, "line": exc.lineno,
+                "offset": exc.offset, "start_line": source_edit.start_line,
+                "delete_line_count": source_edit.delete_line_count,
+            }, attempt=attempt,
         )
 
     patch = "".join(difflib.unified_diff(

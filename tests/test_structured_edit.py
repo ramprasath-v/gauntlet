@@ -232,7 +232,7 @@ async def test_reconstruction_and_diff_contain_exact_model_replacement_only(
     assert repository_digest(ROOT) == before_digest
 
 
-async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
+async def test_invalid_model_replacement_is_rejected_without_correction(
     trusted_context
 ):
     source, context = trusted_context
@@ -246,15 +246,13 @@ async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
         ),
         context, ROOT,
     )
-    assert isinstance(proposal, RepairProposal)
-    assert f"+{invalid}" in proposal.patch
-    assert f"+{invalid}:" not in proposal.patch
-
-    result = await M41RepairExecutor(ROOT).run(proposal)
-
-    assert isinstance(result, PatchAssessment)
-    assert result.build_integrity.status == "FAIL"
-    assert result.p100_security.status == "NOT_RUN"
+    assert isinstance(proposal, RepairFailure)
+    assert proposal.failure_code == "reconstructed_source_invalid_python"
+    assert proposal.diagnostics["start_line"] == 1
+    assert proposal.diagnostics["delete_line_count"] == 1
+    assert candidate(
+        source, start=1, delete=1, replacement=[invalid]
+    ).source_edit.replacement_lines == [invalid]
     assert repository_digest(ROOT) == before_digest
 
 

@@ -26,8 +26,8 @@ customer-support, and personalization semantics.
 
 | Milestone | Status | Goal |
 | --- | --- | --- |
-| M6 — Generic Security Contract Foundation | **CURRENT** | Normalize execution evidence and evaluate P100 behind a reusable contract boundary. |
-| M7 — P300 Effect Authorization | PENDING | Require configured approval for sensitive effects such as refunds over a configurable limit. |
+| M6 — Generic Security Contract Foundation | COMPLETE | Normalize execution evidence and evaluate P100 behind a reusable contract boundary. |
+| M7 — P300 Effect Authorization | **NEXT** | Require configured approval for sensitive effects such as refunds over a configurable limit. |
 | M8 — Product Demo Flow | PENDING | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
@@ -37,6 +37,8 @@ customer-support, and personalization semantics.
 | M14 — Continuous Security Verification | FUTURE | Re-run affected contracts after agent, model, tool, or policy changes. |
 
 ### M6 — Generic Security Contract Foundation
+
+Status: COMPLETE in commit `165fc4b`.
 
 M6 introduces a minimal normalized execution-event model, typed security
 contract, evaluator boundary, and P100 adapter while preserving all existing
@@ -100,6 +102,19 @@ claiming a user's actual ethnicity, culture, religion, nationality, or identity.
 - **M14 Continuous Security Verification:** select affected contracts and emit
   concrete `SECURITY CONTRACT REGRESSION` evidence after code, model, prompt,
   tool, policy, capability, memory, or retrieval changes.
+
+### Historical demo milestone labels
+
+The repository preserves these earlier milestone names and their evidence IDs:
+
+- **Historical M7.1 — Verified Replay Demo:** offline, evidence-backed judge UI.
+- **Historical M7.2 — Live Repair Demo:** one-request Kimi/Nebius demo pipeline.
+- **Historical M7.2.1 — Repair Boundary Hardening:** deterministic rejection of
+  structured edits that split Python source constructs.
+
+These historical labels are retained for reproducibility. They are distinct
+from the current product-strategy **M7 — P300 Effect Authorization** milestone;
+historical evidence and filenames are not renumbered.
 
 ## Completed foundation (M1–M5)
 

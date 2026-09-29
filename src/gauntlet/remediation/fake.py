@@ -13,7 +13,7 @@ class FakeRemediationProvider:
         context = request.source_context
         lines = context.source_text.splitlines()
         start = lines.index(
-            "                    privileged_context=not self.enforce_tool_data_boundary,"
+            "                events[-1].context_flow = ContextFlow("
         )
         end = lines.index(
             "                    enforce_data_only_boundary=self.enforce_tool_data_boundary))"
