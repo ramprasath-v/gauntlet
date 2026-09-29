@@ -292,3 +292,27 @@ production source-context builder, prompt builder, provider, validator,
 executor, and retry orchestrator do not import it. The fixture demonstrates
 that a real role-boundary repair can reach `VERIFIED`; it is not evidence of a
 live Lightning repair.
+
+## Generic Contracts and P300 Effect Authorization
+
+M6 adds a property-agnostic boundary from `NormalizedExecutionTrace` plus a
+typed `SecurityContract` to a `ContractEvaluation`. The registry selects an
+evaluator by ID and checks result identity; it contains no P100, refund, or
+threshold semantics. P100 remains an adapter and evaluator outside that core.
+
+M7 proves the same boundary with P300. The synthetic refund fixture emits
+`USER_INPUT`, `TOOL_CALL`, optional `APPROVAL`, and simulated
+`EXTERNAL_EFFECT` events. Monetary values use integer minor units. The P300
+contract supplies the action name, amount field, effect kind, correlation
+field, approval type, currency, and autonomous limit. The reusable effect
+authorization evaluator requires a matching approved event with a lower
+sequence number than each above-limit effect and emits a concrete structured
+counterexample otherwise. An approval recorded after an effect cannot satisfy
+the invariant.
+
+No real transaction, provider call, or model judgment is involved in contract
+evaluation. The existing repair-generation ingress still consumes the older
+P100 `AttackTrace` and authorized source-context allowlist, so M7 does not
+pretend that it can generate a P300 patch through that path. The fixture's
+approval-enforcing mode demonstrates the expected post-repair behavior without
+claiming a model-proposed or pipeline-applied repair.

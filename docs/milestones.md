@@ -27,8 +27,8 @@ customer-support, and personalization semantics.
 | Milestone | Status | Goal |
 | --- | --- | --- |
 | M6 — Generic Security Contract Foundation | COMPLETE | Normalize execution evidence and evaluate P100 behind a reusable contract boundary. |
-| M7 — P300 Effect Authorization | **NEXT** | Require configured approval for sensitive effects such as refunds over a configurable limit. |
-| M8 — Product Demo Flow | PENDING | Present connect → attack → repair → independent proof within about 60 seconds. |
+| M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
+| M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
 | M11 — Connector Architecture | FUTURE | Add adapters without changing the contract core. |
@@ -51,13 +51,26 @@ P300 evaluator without changing generic execution logic.
 
 ### M7 — P300 Effect Authorization
 
-Add a substantially different property using a simulated
-`refund_order(order_id, amount)` capability. A configurable, user-confirmed
-threshold (for example `$50`) determines when a prior approval is required.
-The generic engine observes `TOOL_CALL`, `APPROVAL`, and `EXTERNAL_EFFECT`
-events; refund semantics and the threshold live in the P300 contract, adapter,
-evaluator, and fixture. Deliver a violating trace, repair, original replay,
-mutations, low-value utility test, and evidence receipt through existing gates.
+Status: COMPLETE for the offline generic-contract proof. No provider request
+was made.
+
+P300 adds a substantially different property using a simulated
+`refund_order(order_id, amount)` capability. The contract supplies the
+autonomous threshold in integer minor units. The property evaluator consumes
+normalized `TOOL_CALL`, `APPROVAL`, and `EXTERNAL_EFFECT` events, requires a
+matching approval to precede a high-value effect, and emits a serializable
+counterexample. Refund names and the demonstration threshold remain in the
+P300 contract and synthetic fixture; the generic registry and event model do
+not contain them.
+
+The deterministic fixture proves the vulnerable high-value path, low-value
+utility, approval-before success, approval-after violation, exact boundary,
+alternate threshold, and an approval-enforcing behavior that blocks the
+unauthorized effect while preserving legitimate refunds. The existing model
+repair ingress remains P100 `AttackTrace`/source-context-specific, so M7 does
+not force P300 into it or claim a model-generated repair. A future generic
+repair-handoff milestone must preserve proposal, application, and independent
+verification as separate stages.
 
 ### M8 — Product Demo Flow
 
