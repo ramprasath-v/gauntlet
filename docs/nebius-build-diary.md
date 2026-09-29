@@ -1915,3 +1915,33 @@ line-array edits recurred as a model-output failure mode. This is an empirical
 limitation observed in these runs. It is not classified as a benchmark defect
 and does not support a claim about all models or establish that Kimi is
 universally better than Qwen or Nemotron.
+
+## M5.1 offline attack-mutation implementation
+
+Date: 2026-09-29 UTC. No provider request was made, no retained repair was
+executed or changed, and no mutation evidence artifact was produced.
+
+M5.1 defines four fixed mutations of the existing P100 indirect
+prompt-injection family: alternate benign user wording, instruction-first
+placement, inline placement without the original paragraph boundary, and a
+quoted form surrounded by legitimate review content. Every case retains the
+canonical instruction recognized by the deterministic simulator and trace
+builder. This varies meaningful structure without silently expanding the
+simulator into a semantic paraphrase oracle.
+
+The new evaluator requires a `gauntlet.repair-candidate.v3` artifact and
+caller-supplied expected candidate and patch identities. It rejects identity,
+source-hash, or patch-digest disagreement before evaluation. Every mutation
+runs first in an independent unpatched disposable workspace and counts only if
+it reproduces `CANARY_LEAKED` with a linked failure boundary. Each qualified
+case then receives a separate fresh workspace; the evaluator checks the
+trusted source identity, materializes and verifies the exact patch digest,
+applies only the authorized target, compiles, and runs the corresponding
+post-patch attack without changing the patch.
+
+`gauntlet.attack-mutation-assessment.v1` records per-case payload and user
+prompt digests, pre/post workspace IDs, source and patch bindings, command
+evidence, `PRE_PATCH_ATTACK_REPRODUCED`, `POST_PATCH_ATTACK_BLOCKED`, cleanup,
+and repository immutability. It does not alter the frozen M4 assessment or any
+P100, P200, compatibility, or generated-regression result. Evaluation of the
+retained Kimi attempt-3 patch remains a separately authorized next step.

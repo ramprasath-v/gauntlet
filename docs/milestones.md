@@ -157,7 +157,18 @@ Exit: V2 successfully builds in isolation.
 
 ## M5 — Prove
 
-Status: NOT STARTED.
+Status: M5.1 IMPLEMENTED OFFLINE; retained-patch evaluation not yet run.
+
+M5.1 adds four fixed mutations of the P100 indirect prompt-injection family.
+Each mutation must first reproduce the canary leak against the original victim
+in its own disposable workspace. Only then may the exact integrity-bound
+retained patch be applied in a separate workspace and evaluated against that
+same case. Evidence uses `gauntlet.attack-mutation-assessment.v1` and records
+the pre-patch and post-patch outcomes independently. Frozen P100, P200,
+compatibility, and `gauntlet.patch-assessment.v1` remain unchanged.
+
+The mutation executor and offline tests are complete. No retained repair has
+been evaluated and no M5 evidence artifact has been created yet.
 
 Run original exploit, mutated attacks, and legitimate utility tests.
 

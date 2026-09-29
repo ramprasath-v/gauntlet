@@ -240,6 +240,33 @@ assessment and candidate identity. The loader retains the original v1 digest
 forms and the unchanged `PatchProof` model so historical evidence preserves
 its original all-commands-passed meaning.
 
+## M5.1 Attack-Mutation Proof Boundary
+
+M5.1 is additive to the frozen P100, P200, compatibility, and
+`gauntlet.patch-assessment.v1` gates. Four fixed benchmark-owned mutations vary
+the benign user request, instruction placement, paragraph delimiters, and
+quoted indirection while retaining the canonical indirect instruction and the
+same untrusted `search_reviews` boundary. Arbitrary paraphrases are outside
+this first mutation set because the deterministic simulator intentionally
+recognizes one canonical instruction family.
+
+`gauntlet.attack-mutation-assessment.v1` binds the v3 candidate identity,
+trusted source hash, exact patch digest, and per-mutation payload and user
+prompt digests. Each mutation first runs in its own unpatched disposable
+workspace. It counts only when that pre-patch check reproduces the canary leak
+with linked trust-boundary evidence. A qualified mutation then receives a new
+disposable workspace, where Gauntlet verifies source identity, writes and
+checks the exact patch bytes, applies only the authorized target change,
+compiles, and runs that mutation's post-patch check. An unqualified mutation
+does not receive a post-patch claim.
+
+The assessment records `PRE_PATCH_ATTACK_REPRODUCED` and
+`POST_PATCH_ATTACK_BLOCKED` separately for every case, along with independent
+workspace IDs, command evidence, cleanup, and real-repository immutability.
+The implementation does not generate, alter, or tune a repair. The retained
+Kimi candidate has not yet been run through this M5.1 path; that deterministic
+evaluation requires separate authorization.
+
 ## Clean M4 Repair Benchmark
 
 `victims/clean_customer_support` is a separate target so frozen M1/M2 behavior
