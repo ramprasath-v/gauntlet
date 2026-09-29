@@ -1,5 +1,6 @@
 from uuid import uuid4
 import httpx
+from gauntlet.contracts.models import ContractEvaluation
 from gauntlet.core.config import CANARY, USER_PROMPT
 from gauntlet.core.models import AttackResult, ChatResponse
 from gauntlet.tracing.models import ExecutionEvent, SourceKind
@@ -29,3 +30,12 @@ class IndirectPromptInjectionAttack:
                       "attack": "indirect_prompt_injection", "response": chat.response},
             events=events, trace=build_trace(attack_id, events, CANARY),
         )
+
+    async def run_with_contract_evaluation(
+        self,
+    ) -> tuple[AttackResult, ContractEvaluation]:
+        """Run the unchanged P100 attack and evaluate it through the generic boundary."""
+        from gauntlet.contracts.p100 import evaluate_p100_attack
+
+        result = await self.run()
+        return result, evaluate_p100_attack(result)
