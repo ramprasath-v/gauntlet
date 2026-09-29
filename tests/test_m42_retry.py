@@ -302,8 +302,11 @@ async def test_validation_failure_retries_test_only_and_persists_verified_run(
     assert result.attempts[1].patch_proof == "VERIFIED"
     assert result.attempts[0].candidate_digest != result.attempts[1].candidate_digest
     assert result.attempts[1].previous_failure_id == result.attempts[0].failure.failure_id
-    assert result.patch_proof.verified
+    assert result.assessment.full_candidate_verified
     assert load_repair_run(evidence_path) == result
+    assert json.loads(evidence_path.read_text())["schema_version"] == (
+        "gauntlet.repair-run.v2"
+    )
     assert repository_digest(ROOT) == before
 
     first_reference = result.attempts[0].candidate_artifact
@@ -616,3 +619,11 @@ async def test_run_evidence_tamper_is_rejected(serialized_trace, tmp_path):
     path.write_text(path.read_text().replace('"status": "VERIFIED"', '"status": "FAILED"', 1))
     with pytest.raises((ValidationError, ValueError)):
         load_repair_run(path)
+
+
+def test_historical_v1_run_evidence_keeps_original_semantics():
+    path = ROOT / "evidence/two-call-nemotron-super-live-20260929T040917Z.json"
+    assert json.loads(path.read_text())["schema_version"] == "gauntlet.repair-run.v1"
+    result = load_repair_run(path)
+    assert isinstance(result, RepairRunFailed)
+    assert all(attempt.assessment is None for attempt in result.attempts)

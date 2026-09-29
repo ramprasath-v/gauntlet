@@ -44,7 +44,7 @@ from gauntlet.remediation.validation import (
     validate_regression_test, validate_source_edit,
 )
 from gauntlet.sandbox.m4_executor import M41RepairExecutor
-from gauntlet.sandbox.m4_models import PatchProof
+from gauntlet.sandbox.m4_models import PatchAssessment
 from gauntlet.sandbox.workspace import repository_digest
 from gauntlet.tracing.models import AttackTrace
 
@@ -210,6 +210,76 @@ class M42RepairOrchestrator:
                 "boundary_type": trace.failure_boundary.boundary_type,
                 "evidence_strength": trace.evidence.get("strength", "UNKNOWN"),
             },
+        )
+
+    def _assessment_failure(
+        self, request: RemediationRequest, assessment: PatchAssessment, *, attempt: int,
+    ) -> RepairFailure:
+        if assessment.generated_workspace_integrity == "FAIL":
+            return RepairFailure(
+                repair_id=assessment.repair_id,
+                candidate_id=assessment.candidate_id,
+                candidate_digest=assessment.candidate_digest,
+                candidate_field_digests=assessment.candidate_field_digests,
+                candidate_field_lengths={},
+                **request.repair_context.model_dump(),
+                failure_stage="regression_execution",
+                failure_code="generated_test_workspace_modified",
+                message="The generated regression modified protected workspace inputs.",
+                diagnostics={
+                    "assessment_id": assessment.assessment_id,
+                    "workspace_id": assessment.generated_test_workspace_id,
+                },
+                attempt=attempt,
+            )
+        gates = (
+            (assessment.build_integrity, "compile", "compile_failed",
+             "Patched Python source did not compile."),
+            (assessment.p100_security, "security_test", "p100_security_failed",
+             "The frozen P100 security verification failed."),
+            (assessment.p200_utility, "utility_test", "p200_utility_failed",
+             "The frozen P200 utility verification failed."),
+            (assessment.compatibility, "existing_suite", "existing_suite_failed",
+             "The broader compatible existing test suite failed."),
+            (assessment.generated_regression, "regression_execution",
+             "generated_regression_failed",
+             "The exact generated regression test failed."),
+        )
+        selected = next((item for item in gates if item[0].status == "FAIL"), None)
+        if selected is None:
+            stage, code, message, evidence = (
+                "patch_authorization", "assessment_integrity_failed",
+                "The isolated repair assessment failed integrity or cleanup.", None,
+            )
+        else:
+            gate, stage, code, message = selected
+            evidence = gate.evidence
+        diagnostics: dict[str, str | int | bool | None] = {
+            "assessment_id": assessment.assessment_id,
+            "trusted_workspace_id": assessment.trusted_workspace_id,
+            "generated_test_workspace_id": assessment.generated_test_workspace_id,
+            "same_patch_integrity": assessment.same_patch_integrity,
+            "cleanup": assessment.cleanup,
+            "repository_immutability": assessment.repository_immutability,
+        }
+        if evidence is not None:
+            diagnostics.update({
+                "command": " ".join(evidence.argv),
+                "exit_code": evidence.exit_code,
+                "timed_out": evidence.timed_out,
+                "stdout": _safe_text(evidence.stdout, 2_000),
+                "stderr": _safe_text(evidence.stderr, 2_000),
+                "workspace_id": evidence.workspace_id,
+            })
+        return RepairFailure(
+            repair_id=assessment.repair_id,
+            candidate_id=assessment.candidate_id,
+            candidate_digest=assessment.candidate_digest,
+            candidate_field_digests=assessment.candidate_field_digests,
+            candidate_field_lengths={},
+            **request.repair_context.model_dump(),
+            failure_stage=stage, failure_code=code, message=message,
+            diagnostics=diagnostics, attempt=attempt,
         )
 
     def _synthetic_failure(
@@ -441,7 +511,7 @@ class M42RepairOrchestrator:
             failure: RepairFailure | None = None
             failed_call: str | None = None
             proposal: RepairProposal | None = None
-            proof: PatchProof | None = None
+            assessment: PatchAssessment | None = None
             edit_candidate: GeneratedEditCandidate | None = None
             test_candidate: GeneratedTestCandidate | None = None
             combined: GeneratedRepairCandidate | None = None
@@ -587,8 +657,17 @@ class M42RepairOrchestrator:
                         if edit_candidate else None
                     ),
                 )
+                execution_candidate_id = str(uuid4())
+                execution_digest, execution_fields, _ = combined_candidate_identity(
+                    combined
+                )
                 execution = await self.executor_factory(self.repository_root).run(
-                    proposal
+                    proposal,
+                    candidate_id=execution_candidate_id,
+                    candidate_digest=execution_digest,
+                    candidate_field_digests=execution_fields,
+                    expected_patch_digest=_digest(patch),
+                    expected_regression_test_digest=_digest(regression_test),
                 )
                 if isinstance(execution, RepairFailure):
                     candidate_digest, field_digests, field_lengths = (
@@ -608,9 +687,28 @@ class M42RepairOrchestrator:
                     else:
                         failed_call = "edit"
                 else:
-                    proof = execution
-                    proposal_execution = "PASS"
-                    patch_proof = "VERIFIED"
+                    assessment = execution
+                    if not assessment.full_candidate_verified:
+                        failure = self._assessment_failure(
+                            request, assessment, attempt=attempt_number,
+                        )
+                        candidate_digest, field_digests, field_lengths = (
+                            combined_candidate_identity(combined)
+                        )
+                        failure = failure.model_copy(update={
+                            "candidate_digest": candidate_digest,
+                            "candidate_field_digests": field_digests,
+                            "candidate_field_lengths": field_lengths,
+                        })
+                        proposal_execution = "FAIL"
+                        patch_proof = "FAIL"
+                        if failure.failure_stage == "regression_execution":
+                            failed_call = "test"
+                        else:
+                            failed_call = "edit"
+                    else:
+                        proposal_execution = "PASS"
+                        patch_proof = "VERIFIED"
 
             # ---------- ATTEMPT RECORD ----------
             if combined is not None:
@@ -622,7 +720,10 @@ class M42RepairOrchestrator:
                 candidate_digest = failure.candidate_digest
                 field_digests = failure.candidate_field_digests
                 field_lengths = failure.candidate_field_lengths
-            candidate_id = failure.candidate_id if failure else str(uuid4())
+            candidate_id = (
+                assessment.candidate_id if assessment is not None
+                else failure.candidate_id if failure else str(uuid4())
+            )
             candidate_artifact = None
             if combined is not None and evidence_path is not None:
                 artifact_path, relative_artifact_path = candidate_artifact_location(
@@ -654,7 +755,7 @@ class M42RepairOrchestrator:
                     integrity_digest=artifact.integrity_digest,
                 )
             workspace_id = (
-                proof.workspace_id if proof else
+                assessment.trusted_workspace_id if assessment else
                 failure.diagnostics.get("workspace_id") if failure else None
             )
             completed_at = datetime.now(timezone.utc)
@@ -682,7 +783,8 @@ class M42RepairOrchestrator:
                 patch_proof=patch_proof,
                 repair_id=proposal.repair_id if proposal else None,
                 failure=failure,
-                proof_id=proof.proof_id if proof else None,
+                proof_id=assessment.assessment_id if assessment else None,
+                assessment=assessment,
                 workspace_id=str(workspace_id) if workspace_id else None,
                 edit_provider_completion=edit_completion,
                 test_provider_completion=test_completion,
@@ -692,7 +794,8 @@ class M42RepairOrchestrator:
             ))
 
             unchanged = repository_digest(self.repository_root) == original_digest
-            if proof is not None and unchanged:
+            if (assessment is not None
+                    and assessment.full_candidate_verified and unchanged):
                 result: RepairRunResult = RepairRunSucceeded(
                     run_id=run_id,
                     trace_id=request.repair_context.trace_id,
@@ -704,7 +807,7 @@ class M42RepairOrchestrator:
                     successful_attempt=attempt_number,
                     attempts=attempts,
                     final_proposal=proposal,
-                    patch_proof=proof,
+                    assessment=assessment,
                     started_at=started_at,
                     completed_at=completed_at,
                     duration_seconds=monotonic() - started,

@@ -15,6 +15,7 @@ from gauntlet.remediation.models import (
 )
 from gauntlet.remediation.validation import validate_candidate
 from gauntlet.sandbox.m4_executor import M41RepairExecutor
+from gauntlet.sandbox.m4_models import PatchAssessment
 from gauntlet.sandbox.workspace import repository_digest
 from victims.customer_support.app import create_app
 
@@ -251,10 +252,9 @@ async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
 
     result = await M41RepairExecutor(ROOT).run(proposal)
 
-    assert isinstance(result, RepairFailure)
-    assert (result.failure_stage, result.failure_code) == (
-        "compile", "compile_failed",
-    )
+    assert isinstance(result, PatchAssessment)
+    assert result.build_integrity.status == "FAIL"
+    assert result.p100_security.status == "NOT_RUN"
     assert repository_digest(ROOT) == before_digest
 
 

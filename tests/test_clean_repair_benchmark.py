@@ -17,7 +17,7 @@ from gauntlet.remediation.validation import validate_candidate
 from gauntlet.remediation.retry import M42RepairOrchestrator
 from gauntlet.remediation.retry_models import RepairRunSucceeded
 from gauntlet.sandbox.m4_executor import M41RepairExecutor
-from gauntlet.sandbox.m4_models import PatchProof
+from gauntlet.sandbox.m4_models import PatchAssessment
 from gauntlet.sandbox.workspace import repository_digest
 from victims.clean_customer_support.app import create_app
 
@@ -274,13 +274,13 @@ async def test_test_only_known_good_patch_reaches_verified_without_repo_change()
     before = repository_digest(ROOT)
     proposal = await _test_only_known_good_proposal()
     proof = await M41RepairExecutor(ROOT).run(proposal)
-    assert isinstance(proof, PatchProof)
-    assert proof.verified
+    assert isinstance(proof, PatchAssessment)
+    assert proof.full_candidate_verified
     assert proof.files_changed == [TARGET]
     assert all(result.passed for result in (
-        proof.patch_application, proof.compile_evidence,
-        proof.generated_regression_evidence, proof.p100_security_evidence,
-        proof.p200_utility_evidence, proof.broader_suite_evidence,
+        proof.trusted_patch_application, proof.build_integrity.evidence,
+        proof.generated_regression.evidence, proof.p100_security.evidence,
+        proof.p200_utility.evidence, proof.compatibility.evidence,
     ))
     assert proof.original_repository_unchanged
     assert repository_digest(ROOT) == before
@@ -295,7 +295,7 @@ async def test_clean_target_uses_existing_bounded_m42_path():
     assert result.total_attempts == 1
     assert provider.edit_calls == 1
     assert provider.test_calls == 1
-    assert result.patch_proof.verified
+    assert result.assessment.full_candidate_verified
 
 
 @pytest.mark.parametrize("change,expected_stage", [
@@ -324,8 +324,13 @@ async def test_trivial_and_fixture_specific_repairs_are_not_verified(
     change, expected_stage
 ):
     result = await M41RepairExecutor(ROOT).run(await proposal_with_change(change))
-    assert isinstance(result, RepairFailure)
-    assert result.failure_stage == expected_stage
+    assert isinstance(result, PatchAssessment)
+    gate = {
+        "security_test": result.p100_security,
+        "utility_test": result.p200_utility,
+    }[expected_stage]
+    assert gate.status == "FAIL"
+    assert not result.full_candidate_verified
 
 
 async def test_canary_verifier_and_unauthorized_patch_controls_are_rejected():

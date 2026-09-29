@@ -13,7 +13,7 @@ from gauntlet.remediation.candidate_artifact import (
 from gauntlet.remediation.retry_models import RepairRunResult
 
 
-RUN_EVIDENCE_SCHEMA_VERSION = "gauntlet.repair-run.v1"
+RUN_EVIDENCE_SCHEMA_VERSION = "gauntlet.repair-run.v2"
 _RUN_ADAPTER = TypeAdapter(RepairRunResult)
 
 
@@ -28,7 +28,9 @@ def _legacy_payload(
     result: RepairRunResult, *, omit_candidate_artifact: bool,
 ) -> str:
     payload = result.model_dump(mode="json")
+    payload.pop("assessment", None)
     for attempt in payload["attempts"]:
+        attempt.pop("assessment", None)
         attempt.pop("edit_artifact", None)
         if omit_candidate_artifact:
             attempt.pop("candidate_artifact", None)
@@ -37,8 +39,18 @@ def _legacy_payload(
     )
 
 
+def _v1_payload(result: RepairRunResult) -> str:
+    payload = result.model_dump(mode="json")
+    payload.pop("assessment", None)
+    for attempt in payload["attempts"]:
+        attempt.pop("assessment", None)
+    return json.dumps(
+        payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+    )
+
+
 class RepairRunEnvelope(StrictModel):
-    schema_version: Literal["gauntlet.repair-run.v1"]
+    schema_version: Literal["gauntlet.repair-run.v1", "gauntlet.repair-run.v2"]
     result: RepairRunResult
     result_digest: str
 
@@ -46,6 +58,7 @@ class RepairRunEnvelope(StrictModel):
     def valid_integrity(self) -> "RepairRunEnvelope":
         expected = hashlib.sha256(_payload(self.result).encode()).hexdigest()
         legacy_expected = {
+            hashlib.sha256(_v1_payload(self.result).encode()).hexdigest(),
             hashlib.sha256(_legacy_payload(
                 self.result, omit_candidate_artifact=False
             ).encode()).hexdigest(),
@@ -53,7 +66,8 @@ class RepairRunEnvelope(StrictModel):
                 self.result, omit_candidate_artifact=True
             ).encode()).hexdigest(),
         }
-        if self.result_digest not in {expected, *legacy_expected}:
+        allowed = {expected} if self.schema_version == RUN_EVIDENCE_SCHEMA_VERSION else legacy_expected
+        if self.result_digest not in allowed:
             raise ValueError("Repair run evidence integrity failed: result_digest")
         return self
 

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from gauntlet.remediation.handoff import load_repair_proposal
 from gauntlet.remediation.models import FailureStage, RepairFailure, RepairProposal
-from gauntlet.sandbox.m4_models import PatchProof
+from gauntlet.sandbox.m4_models import GateAssessment, PatchAssessment
 from gauntlet.sandbox.m4_runner import M41CommandRunner
 from gauntlet.sandbox.models import CommandResult
 from gauntlet.sandbox.workspace import (
@@ -92,7 +92,7 @@ class M41RepairExecutor:
         self.repository_root = repository_root.resolve(strict=True)
         self.runner = runner or M41CommandRunner()
 
-    async def run_persisted(self, path: Path) -> PatchProof | RepairFailure:
+    async def run_persisted(self, path: Path) -> PatchAssessment | RepairFailure:
         return await self.run(load_repair_proposal(path))
 
     def _failure(
@@ -159,198 +159,249 @@ class M41RepairExecutor:
             },
         )
 
-    async def run(self, proposal: RepairProposal) -> PatchProof | RepairFailure:
-        """Execute exactly one proposal in one fresh disposable workspace."""
+    async def _prepare_workspace(
+        self, proposal: RepairProposal, workspace: SandboxWorkspace,
+    ) -> dict[str, object]:
+        """Apply and compile the exact patch without interpreting its contents."""
+        assert workspace.path is not None
+        prepared: dict[str, object] = {}
+        target = workspace.resolve_relative(proposal.target_path)
+        try:
+            observed_hash = _sha256_text(
+                _symbol_text(target, proposal.target_symbol)
+            )
+        except (OSError, SyntaxError, ValueError) as exc:
+            prepared["failure"] = self._failure(
+                proposal, stage="source_identity", code="target_unreadable",
+                message="The authorized workspace target could not be identified.",
+                diagnostics={"error_type": type(exc).__name__},
+            )
+            return prepared
+        if observed_hash != proposal.source_hash:
+            prepared["failure"] = self._failure(
+                proposal, stage="source_identity", code="source_hash_mismatch",
+                message="The workspace target does not match the proposal source.",
+                diagnostics={
+                    "expected_source_hash": proposal.source_hash,
+                    "observed_source_hash": observed_hash,
+                },
+            )
+            return prepared
+
+        before_files = _workspace_files(workspace)
+        artifact_root = workspace.resolve_relative(".gauntlet/artifacts")
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        patch_path = artifact_root / "repair.patch"
+        patch_path.write_bytes(proposal.patch.encode())
+        patch_result = await self.runner.apply_patch(workspace, patch_path)
+        prepared["patch_application"] = patch_result
+        if not patch_result.passed:
+            prepared["failure"] = self._command_failure(
+                proposal, patch_result, stage="patch_apply",
+                code="git_apply_failed",
+                message="The exact proposal patch did not apply.",
+            )
+            return prepared
+
+        files_changed = _changed_files(before_files, _workspace_files(workspace))
+        prepared["files_changed"] = files_changed
+        if files_changed != [proposal.target_path]:
+            prepared["failure"] = self._failure(
+                proposal, stage="patch_authorization",
+                code="unauthorized_post_patch_change",
+                message="Patch application changed files outside the authorized target.",
+                diagnostics={
+                    "expected_target": proposal.target_path,
+                    "changed_files": json.dumps(files_changed),
+                    "workspace_id": workspace.workspace_id,
+                },
+            )
+            return prepared
+
+        compile_result = await self.runner.compile(workspace)
+        prepared["compile_evidence"] = compile_result
+        if not compile_result.passed:
+            return prepared
+        try:
+            patched_source_hash = _sha256_text(
+                _symbol_text(target, proposal.target_symbol)
+            )
+        except (OSError, SyntaxError, ValueError) as exc:
+            prepared["failure"] = self._failure(
+                proposal, stage="compile", code="patched_target_unreadable",
+                message="The patched target symbol could not be identified.",
+                diagnostics={"error_type": type(exc).__name__},
+            )
+            return prepared
+        if patched_source_hash == proposal.source_hash:
+            prepared["failure"] = self._failure(
+                proposal, stage="patch_authorization", code="target_unchanged",
+                message="Patch application did not change the authorized symbol.",
+                diagnostics={"source_hash": proposal.source_hash},
+            )
+            return prepared
+        prepared["patched_source_hash"] = patched_source_hash
+        return prepared
+
+    @staticmethod
+    def _gate(result: CommandResult | None) -> GateAssessment:
+        if result is None:
+            return GateAssessment(status="NOT_RUN")
+        return GateAssessment(status="PASS" if result.passed else "FAIL", evidence=result)
+
+    async def run(
+        self, proposal: RepairProposal, *, candidate_id: str | None = None,
+        candidate_digest: str | None = None,
+        candidate_field_digests: dict[str, str] | None = None,
+        expected_patch_digest: str | None = None,
+        expected_regression_test_digest: str | None = None,
+    ) -> PatchAssessment | RepairFailure:
+        """Evaluate trusted gates and model tests in isolated workspaces."""
         original_digest = repository_digest(self.repository_root)
         started_at = datetime.now(timezone.utc)
         started = monotonic()
-        failure: RepairFailure | None = None
-        evidence: dict[str, object] = {}
-        workspace = SandboxWorkspace(self.repository_root)
-
-        with workspace:
-            assert workspace.path is not None
-            target = workspace.resolve_relative(proposal.target_path)
-            try:
-                observed_hash = _sha256_text(
-                    _symbol_text(target, proposal.target_symbol)
-                )
-            except (OSError, SyntaxError, ValueError) as exc:
-                failure = self._failure(
-                    proposal, stage="source_identity", code="target_unreadable",
-                    message="The authorized workspace target could not be identified.",
-                    diagnostics={"error_type": type(exc).__name__},
-                )
-            else:
-                if observed_hash != proposal.source_hash:
-                    failure = self._failure(
-                        proposal, stage="source_identity", code="source_hash_mismatch",
-                        message="The workspace target does not match the proposal source.",
-                        diagnostics={
-                            "expected_source_hash": proposal.source_hash,
-                            "observed_source_hash": observed_hash,
-                        },
-                    )
-
-            if failure is None:
-                before_files = _workspace_files(workspace)
-                artifact_root = workspace.resolve_relative(".gauntlet/artifacts")
-                artifact_root.mkdir(parents=True, exist_ok=True)
-                patch_path = artifact_root / "repair.patch"
-                patch_path.write_bytes(proposal.patch.encode())
-                patch_result = await self.runner.apply_patch(workspace, patch_path)
-                evidence["patch_application"] = patch_result
-                if not patch_result.passed:
-                    failure = self._command_failure(
-                        proposal, patch_result, stage="patch_apply",
-                        code="git_apply_failed",
-                        message="The exact proposal patch did not apply.",
-                    )
-
-            if failure is None:
-                files_changed = _changed_files(before_files, _workspace_files(workspace))
-                evidence["files_changed"] = files_changed
-                if files_changed != [proposal.target_path]:
-                    failure = self._failure(
-                        proposal, stage="patch_authorization",
-                        code="unauthorized_post_patch_change",
-                        message="Patch application changed files outside the authorized target.",
-                        diagnostics={
-                            "expected_target": proposal.target_path,
-                            "changed_files": json.dumps(files_changed),
-                            "workspace_id": workspace.workspace_id,
-                        },
-                    )
-
-            if failure is None:
-                compile_result = await self.runner.compile(workspace)
-                evidence["compile_evidence"] = compile_result
-                if not compile_result.passed:
-                    failure = self._command_failure(
-                        proposal, compile_result, stage="compile",
-                        code="compile_failed",
-                        message="Patched Python source did not compile.",
-                    )
-
-            if failure is None:
-                try:
-                    patched_source_hash = _sha256_text(
-                        _symbol_text(target, proposal.target_symbol)
-                    )
-                except (OSError, SyntaxError, ValueError) as exc:
-                    failure = self._failure(
-                        proposal, stage="compile", code="patched_target_unreadable",
-                        message="The patched target symbol could not be identified.",
-                        diagnostics={"error_type": type(exc).__name__},
-                    )
-                else:
-                    evidence["patched_source_hash"] = patched_source_hash
-                    if patched_source_hash == proposal.source_hash:
-                        failure = self._failure(
-                            proposal, stage="patch_authorization",
-                            code="target_unchanged",
-                            message="Patch application did not change the authorized symbol.",
-                            diagnostics={"source_hash": proposal.source_hash},
-                        )
-
-            if failure is None:
-                generated_path = workspace.resolve_relative(
-                    ".gauntlet/generated_tests/test_generated_repair.py"
-                )
-                generated_path.parent.mkdir(parents=True, exist_ok=True)
-                generated_path.write_bytes(proposal.regression_test.encode())
-                regression_digest = hashlib.sha256(generated_path.read_bytes()).hexdigest()
-                evidence["regression_test_digest"] = regression_digest
-                if regression_digest != _sha256_text(proposal.regression_test):
-                    failure = self._failure(
-                        proposal, stage="regression_execution",
-                        code="regression_artifact_mismatch",
-                        message="Materialized regression test differs from the proposal.",
-                        diagnostics={"observed_digest": regression_digest},
-                    )
-
-            if failure is None:
-                regression_result = await self.runner.generated_regression(
-                    workspace, generated_path
-                )
-                evidence["generated_regression_evidence"] = regression_result
-                if not regression_result.passed:
-                    failure = self._command_failure(
-                        proposal, regression_result, stage="regression_execution",
-                        code="generated_regression_failed",
-                        message="The exact generated regression test failed.",
-                    )
-
-            if failure is None:
-                security_result = await self.runner.p100_security(
-                    workspace, proposal.target_path
-                )
-                evidence["p100_security_evidence"] = security_result
-                if not security_result.passed:
-                    failure = self._command_failure(
-                        proposal, security_result, stage="security_test",
-                        code="p100_security_failed",
-                        message="The frozen P100 security verification failed.",
-                    )
-
-            if failure is None:
-                utility_result = await self.runner.p200_utility(
-                    workspace, proposal.target_path
-                )
-                evidence["p200_utility_evidence"] = utility_result
-                if not utility_result.passed:
-                    failure = self._command_failure(
-                        proposal, utility_result, stage="utility_test",
-                        code="p200_utility_failed",
-                        message="The frozen P200 utility verification failed.",
-                    )
-
-            if failure is None:
-                broader_result = await self.runner.broader_suite(workspace)
-                evidence["broader_suite_evidence"] = broader_result
-                if not broader_result.passed:
-                    failure = self._command_failure(
-                        proposal, broader_result, stage="existing_suite",
-                        code="existing_suite_failed",
-                        message="The broader compatible existing test suite failed.",
-                    )
-
-        original_unchanged = repository_digest(self.repository_root) == original_digest
-        if not original_unchanged:
+        patch_digest = _sha256_text(proposal.patch)
+        regression_digest = _sha256_text(proposal.regression_test)
+        if expected_patch_digest is not None and expected_patch_digest != patch_digest:
             return self._failure(
-                proposal, stage="patch_authorization",
-                code="original_repository_modified",
-                message="M4.1 detected a change in the original repository inputs.",
-                diagnostics={"workspace_id": workspace.workspace_id},
+                proposal, stage="candidate_validation", code="patch_digest_mismatch",
+                message="Candidate patch digest differs from the execution artifact.",
+                diagnostics={"expected_patch_digest": expected_patch_digest,
+                             "observed_patch_digest": patch_digest},
             )
-        if failure is not None:
-            return failure
+        if (expected_regression_test_digest is not None
+                and expected_regression_test_digest != regression_digest):
+            return self._failure(
+                proposal, stage="candidate_validation",
+                code="regression_test_digest_mismatch",
+                message="Candidate regression digest differs from the execution artifact.",
+                diagnostics={"expected_regression_test_digest": expected_regression_test_digest,
+                             "observed_regression_test_digest": regression_digest},
+            )
 
+        fields = {
+            "rationale": proposal.rationale, "patch": proposal.patch,
+            "regression_test": proposal.regression_test,
+            "optional_policy_artifact": proposal.optional_policy_artifact,
+        }
+        default_serialized = json.dumps(fields, ensure_ascii=True, sort_keys=True)
+        candidate_id = candidate_id or proposal.repair_id
+        candidate_digest = candidate_digest or _sha256_text(default_serialized)
+        candidate_field_digests = candidate_field_digests or {
+            name: _sha256_text(json.dumps(value, ensure_ascii=True))
+            for name, value in fields.items()
+        }
+
+        trusted = SandboxWorkspace(self.repository_root)
+        trusted_prepared: dict[str, object]
+        p100_result = p200_result = compatibility_result = None
+        with trusted:
+            trusted_prepared = await self._prepare_workspace(proposal, trusted)
+            early_failure = trusted_prepared.get("failure")
+            if isinstance(early_failure, RepairFailure):
+                return early_failure
+            compile_result = trusted_prepared.get("compile_evidence")
+            assert isinstance(compile_result, CommandResult)
+            if compile_result.passed:
+                p100_result = await self.runner.p100_security(
+                    trusted, proposal.target_path
+                )
+                p200_result = await self.runner.p200_utility(
+                    trusted, proposal.target_path
+                )
+                compatibility_result = await self.runner.broader_suite(trusted)
+
+        trusted_cleaned = trusted.path is not None and not trusted.path.exists()
+        compile_result = trusted_prepared["compile_evidence"]
+        assert isinstance(compile_result, CommandResult)
+        build = self._gate(compile_result)
+        patched_source_hash = trusted_prepared.get("patched_source_hash")
+
+        generated: SandboxWorkspace | None = None
+        generated_prepared: dict[str, object] = {}
+        generated_result: CommandResult | None = None
+        same_patch: str = "NOT_RUN"
+        generated_workspace_integrity: str = "NOT_RUN"
+        if build.status == "PASS" and isinstance(patched_source_hash, str):
+            generated = SandboxWorkspace(self.repository_root)
+            with generated:
+                generated_prepared = await self._prepare_workspace(proposal, generated)
+                generated_failure = generated_prepared.get("failure")
+                generated_compile = generated_prepared.get("compile_evidence")
+                generated_hash = generated_prepared.get("patched_source_hash")
+                if (generated_failure is None
+                        and isinstance(generated_compile, CommandResult)
+                        and generated_compile.passed
+                        and generated_hash == patched_source_hash):
+                    same_patch = "PASS"
+                    generated_workspace_integrity = "PASS"
+                    generated_path = generated.resolve_relative(
+                        ".gauntlet/generated_tests/test_generated_repair.py"
+                    )
+                    generated_path.parent.mkdir(parents=True, exist_ok=True)
+                    generated_path.write_bytes(proposal.regression_test.encode())
+                    if _sha256_text(generated_path.read_text()) == regression_digest:
+                        generated_files_before = _workspace_files(generated)
+                        generated_result = await self.runner.generated_regression(
+                            generated, generated_path
+                        )
+                        if _changed_files(
+                            generated_files_before, _workspace_files(generated)
+                        ):
+                            generated_workspace_integrity = "FAIL"
+                    else:
+                        same_patch = "FAIL"
+                else:
+                    same_patch = "FAIL"
+
+        generated_cleaned = (
+            None if generated is None else
+            generated.path is not None and not generated.path.exists()
+        )
+        original_unchanged = repository_digest(self.repository_root) == original_digest
+        cleanup = "PASS" if trusted_cleaned and generated_cleaned is not False else "FAIL"
+        immutability = "PASS" if original_unchanged else "FAIL"
         completed_at = datetime.now(timezone.utc)
-        return PatchProof(
-            proof_id=str(uuid4()),
+        patch_application = trusted_prepared["patch_application"]
+        assert isinstance(patch_application, CommandResult)
+        generated_patch_application = generated_prepared.get("patch_application")
+        if not isinstance(generated_patch_application, CommandResult):
+            generated_patch_application = None
+        return PatchAssessment(
+            assessment_id=str(uuid4()),
             repair_id=proposal.repair_id,
+            candidate_id=candidate_id,
+            candidate_digest=candidate_digest,
+            candidate_field_digests=candidate_field_digests,
             trace_id=proposal.trace_id,
             boundary_id=proposal.boundary_id,
             evidence_ids=proposal.evidence_ids,
             target_path=proposal.target_path,
             target_symbol=proposal.target_symbol,
             original_source_hash=proposal.source_hash,
-            patched_source_hash=evidence["patched_source_hash"],
-            patch_digest=_sha256_text(proposal.patch),
-            regression_test_digest=evidence["regression_test_digest"],
-            workspace_id=workspace.workspace_id,
-            source_revision=workspace.source_revision,
-            files_changed=evidence["files_changed"],
-            patch_application=evidence["patch_application"],
-            compile_evidence=evidence["compile_evidence"],
-            generated_regression_evidence=evidence["generated_regression_evidence"],
-            p100_security_evidence=evidence["p100_security_evidence"],
-            p200_utility_evidence=evidence["p200_utility_evidence"],
-            broader_suite_evidence=evidence["broader_suite_evidence"],
+            patched_source_hash=(patched_source_hash
+                                 if isinstance(patched_source_hash, str) else None),
+            patch_digest=patch_digest,
+            regression_test_digest=regression_digest,
+            trusted_workspace_id=trusted.workspace_id,
+            generated_test_workspace_id=(generated.workspace_id if generated else None),
+            source_revision=trusted.source_revision,
+            files_changed=trusted_prepared.get("files_changed", []),
+            trusted_patch_application=patch_application,
+            generated_test_patch_application=generated_patch_application,
+            build_integrity=build,
+            p100_security=self._gate(p100_result),
+            p200_utility=self._gate(p200_result),
+            compatibility=self._gate(compatibility_result),
+            generated_regression=self._gate(generated_result),
+            same_patch_integrity=same_patch,
+            generated_workspace_integrity=generated_workspace_integrity,
+            cleanup=cleanup,
+            repository_immutability=immutability,
+            trusted_workspace_cleaned=trusted_cleaned,
+            generated_test_workspace_cleaned=generated_cleaned,
+            original_repository_unchanged=original_unchanged,
             started_at=started_at,
             completed_at=completed_at,
             duration_seconds=monotonic() - started,
-            workspace_cleaned=workspace.path is not None and not workspace.path.exists(),
-            original_repository_unchanged=original_unchanged,
         )

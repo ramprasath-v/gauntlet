@@ -214,6 +214,32 @@ deterministic candidate validation, proposal assembly, retry selection, M4.1
 execution, or proof. **GeneratedRepairCandidate != RepairProposal != Applied
 patch != PatchProof.**
 
+## Independent Gate Assessment
+
+New executions use `gauntlet.patch-assessment.v1` rather than changing the
+meaning of historical `PatchProof`. The exact integrity-bound patch is applied
+independently to two disposable workspaces. The trusted workspace compiles the
+patched source and, when compilation succeeds, runs frozen P100, P200, and
+compatibility commands without fail-fast coupling between those gates. The
+generated-test workspace independently applies and compiles the same patch,
+verifies the patched-symbol identity, materializes the exact model-authored
+test, and runs only that test. Model-generated Python therefore cannot mutate
+the workspace later trusted for benchmark conclusions.
+
+The assessment records build integrity, P100 security, P200 utility,
+compatibility, generated-regression quality, same-patch integrity, cleanup,
+and real-repository immutability as separate `PASS`, `FAIL`, or `NOT_RUN`
+outcomes. Derived claims distinguish a verified security repair, preserved
+utility, preserved compatibility, a valid generated regression, and a fully
+verified candidate. A failed model test remains `FAIL` and prevents the full
+candidate claim, while independent trusted results remain factual. Compilation
+failure still leaves all runtime gates `NOT_RUN`.
+
+New run envelopes use `gauntlet.repair-run.v2` and bind each attempt to its
+assessment and candidate identity. The loader retains the original v1 digest
+forms and the unchanged `PatchProof` model so historical evidence preserves
+its original all-commands-passed meaning.
+
 ## Clean M4 Repair Benchmark
 
 `victims/clean_customer_support` is a separate target so frozen M1/M2 behavior

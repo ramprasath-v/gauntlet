@@ -1831,3 +1831,30 @@ ineffective repairs reach P100, destructive repairs reach P200 or compatibility,
 call 2 is skipped after call-1 validation failure, historical evidence loads,
 and the real repository remains unchanged. No victim, known-good repair,
 benchmark-specific hint, downstream gate, or retry policy changed.
+
+## Independent trusted-gate assessment
+
+Date: 2026-09-29 UTC. No provider request was made and no retained candidate
+was executed. The frozen Qwen, Nemotron Super, and Kimi comparisons motivated
+an offline execution-boundary correction: model-generated regression quality
+and benchmark-owned repair verification now produce independent evidence.
+The comparison showed that a candidate can reach compilation while its
+model-authored test fails collection, leaving the actual P100/P200 properties
+unobserved under the former fail-fast order.
+
+`gauntlet.patch-assessment.v1` evaluates the exact same source and patch digest
+in two separately created and cleaned workspaces. The trusted branch runs
+compilation, P100, P200, and compatibility. The untrusted generated-test branch
+reapplies and recompiles the exact patch before materializing the exact test.
+No generated-test failure is converted to success, and no generated code can
+affect the trusted branch. Compilation remains the prerequisite for every
+runtime gate. P100, P200, and compatibility outcomes no longer suppress one
+another when the patched application is runnable.
+
+The assessment exposes separate security-repair, utility, compatibility,
+generated-regression, and full-candidate claims. Full verification requires
+all dimensions plus same-patch integrity, cleanup, and unchanged real
+repository inputs. New run evidence uses `gauntlet.repair-run.v2`; historical
+v1 run evidence and historical all-pass `PatchProof` retain their original
+loaders and meaning. The implementation contains no model-specific branch,
+known-good repair, fixture answer, or victim change.

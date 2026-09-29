@@ -1,5 +1,6 @@
 """Safe lineage and terminal results for bounded M4.2 repair runs."""
 from datetime import datetime
+import hashlib
 from typing import Literal
 from uuid import UUID
 
@@ -9,7 +10,7 @@ from gauntlet.remediation.candidate_artifact import (
     CandidateArtifactReference, ValidatedEditArtifactReference,
 )
 from gauntlet.remediation.models import RepairFailure, RepairProposal, StrictModel
-from gauntlet.sandbox.m4_models import PatchProof
+from gauntlet.sandbox.m4_models import PatchAssessment, PatchProof
 
 
 StepOutcome = Literal["NOT_RUN", "PASS", "FAIL", "VERIFIED"]
@@ -50,6 +51,7 @@ class RepairAttempt(StrictModel):
     repair_id: str | None = None
     failure: RepairFailure | None = None
     proof_id: str | None = None
+    assessment: PatchAssessment | None = None
     workspace_id: str | None = None
     edit_provider_completion: SafeProviderCompletion | None = None
     test_provider_completion: SafeProviderCompletion | None = None
@@ -68,6 +70,15 @@ class RepairAttempt(StrictModel):
 
     @model_validator(mode="after")
     def coherent_outcome(self) -> "RepairAttempt":
+        if self.assessment is not None and (
+            self.assessment.candidate_id != self.candidate_id
+            or self.assessment.candidate_digest != self.candidate_digest
+            or self.assessment.candidate_field_digests != self.candidate_field_digests
+            or self.assessment.repair_id != self.repair_id
+            or self.assessment.assessment_id != self.proof_id
+            or self.assessment.trusted_workspace_id != self.workspace_id
+        ):
+            raise ValueError("Attempt identity differs from its patch assessment")
         if self.patch_proof == "VERIFIED":
             if (self.edit_provider_call, self.edit_decode, self.edit_validation,
                     self.test_provider_call, self.test_decode,
@@ -75,6 +86,8 @@ class RepairAttempt(StrictModel):
                 "PASS", "PASS", "PASS", "PASS", "PASS", "PASS", "PASS"
             ) or not self.proof_id or self.failure is not None:
                 raise ValueError("VERIFIED attempt requires complete successful lineage")
+            if self.assessment is not None and not self.assessment.full_candidate_verified:
+                raise ValueError("VERIFIED attempt requires a fully verified assessment")
         elif self.failure is None:
             raise ValueError("Unverified attempt requires a structured failure")
         return self
@@ -92,7 +105,8 @@ class RepairRunSucceeded(StrictModel):
     successful_attempt: int = Field(ge=1, le=3)
     attempts: list[RepairAttempt] = Field(min_length=1, max_length=3)
     final_proposal: RepairProposal
-    patch_proof: PatchProof
+    patch_proof: PatchProof | None = None
+    assessment: PatchAssessment | None = None
     started_at: datetime
     completed_at: datetime
     duration_seconds: float = Field(ge=0)
@@ -106,13 +120,37 @@ class RepairRunSucceeded(StrictModel):
 
     @model_validator(mode="after")
     def verified_by_m41_only(self) -> "RepairRunSucceeded":
-        if (not self.patch_proof.verified
+        legacy_verified = self.patch_proof is not None and self.patch_proof.verified
+        assessed_verified = (
+            self.assessment is not None
+            and self.assessment.full_candidate_verified
+        )
+        proof_identity = (
+            self.patch_proof.proof_id if self.patch_proof is not None
+            else self.assessment.assessment_id if self.assessment is not None
+            else None
+        )
+        repair_identity = (
+            self.patch_proof.repair_id if self.patch_proof is not None
+            else self.assessment.repair_id if self.assessment is not None
+            else None
+        )
+        if ((legacy_verified == assessed_verified)
                 or self.total_attempts != len(self.attempts)
                 or self.successful_attempt != self.total_attempts
-                or self.attempts[-1].proof_id != self.patch_proof.proof_id
-                or self.final_proposal.repair_id != self.patch_proof.repair_id
+                or self.attempts[-1].proof_id != proof_identity
+                or self.final_proposal.repair_id != repair_identity
                 or not self.original_repository_unchanged):
-            raise ValueError("Repair run success requires the final M4.1 PatchProof")
+            raise ValueError("Repair run success requires one final verified proof")
+        if self.assessment is not None and (
+            self.attempts[-1].assessment != self.assessment
+            or hashlib.sha256(self.final_proposal.patch.encode()).hexdigest()
+            != self.assessment.patch_digest
+            or hashlib.sha256(
+                self.final_proposal.regression_test.encode()
+            ).hexdigest() != self.assessment.regression_test_digest
+        ):
+            raise ValueError("Final proposal differs from the verified assessment")
         return self
 
 
