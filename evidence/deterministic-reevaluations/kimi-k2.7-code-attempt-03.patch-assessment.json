@@ -1,0 +1,179 @@
+{
+  "schema_version": "gauntlet.patch-assessment.v1",
+  "assessment_id": "b6cdf07b-dbc1-40c1-b4d1-95e53e881e92",
+  "repair_id": "d3727d32-a14a-47ab-ae8a-4c9ff0c1d03b",
+  "candidate_id": "6a64deaf-c0a5-48d7-ada2-83a8e1701f62",
+  "candidate_digest": "c08671c4191f8005c3df9b7ef69ff1eb06044d706083b536803aeb70b2248b58",
+  "candidate_field_digests": {
+    "rationale": "bbafd0fc656200fea0852d282b9f49886ad6ecdc41b46428abee477b20cf1716",
+    "source_edit": "ca2a4dc051e0c0d76ba7150c98099437d33d5fe99daa324343b9e55bcb912574",
+    "regression_test": "349e5923fb25c9fb07b8b799640752ea636c0ef6851d352037279d04b7c8e5b7",
+    "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+  },
+  "trace_id": "4dcd200c-ad25-4b47-979a-e43da5efda07",
+  "boundary_id": "7db5ece7-d8dc-417a-99be-f11048a42382",
+  "evidence_ids": [
+    "d255fad0-2372-41d7-911f-2ad81bc6f476",
+    "04506a0c-3292-410f-84f1-c652a6a988c7",
+    "bdb815ca-b071-4f6f-9add-2173832ad9ae",
+    "32577f7f-72fb-4527-9de7-ba734682d92e",
+    "5bbe0c06-5e1b-4bc7-99f6-c90b820f27a5"
+  ],
+  "target_path": "victims/customer_support/agent.py",
+  "target_symbol": "CustomerSupportAgent.chat",
+  "original_source_hash": "4c4e554bb8a0a86b898f429183cacaa2271c9d8c94ce91bf3f1dfabcaf388e58",
+  "patched_source_hash": "10ee3fa0fa8a108eea73fbb9df7ea26175d90cd2cb290a1245fcba8c7724fa51",
+  "patch_digest": "1990223740c07c9b32b8721fb1ecc5a1c9ee7d56125e4158382995926f763a78",
+  "regression_test_digest": "20ed4ca0dbe864fcfe94d72d2030e0cdaa40b18552f5e0b75919d28f56987c3d",
+  "trusted_workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+  "generated_test_workspace_id": "eb0fc622-bab9-4a97-9dc4-932a4c07a72f",
+  "source_revision": "38d91807c8a67eed4cdfaeeb9bc5db7e97a18fca",
+  "files_changed": [
+    "victims/customer_support/agent.py"
+  ],
+  "trusted_patch_application": {
+    "category": "PATCH_APPLY",
+    "argv": [
+      "git",
+      "apply",
+      "--verbose",
+      ".gauntlet/artifacts/repair.patch"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\nChecking patch victims/customer_support/agent.py...\nApplied patch victims/customer_support/agent.py cleanly.\n",
+    "duration_seconds": 0.03601275000255555,
+    "workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+    "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-pyff8bc2",
+    "timed_out": false
+  },
+  "generated_test_patch_application": {
+    "category": "PATCH_APPLY",
+    "argv": [
+      "git",
+      "apply",
+      "--verbose",
+      ".gauntlet/artifacts/repair.patch"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\nChecking patch victims/customer_support/agent.py...\nApplied patch victims/customer_support/agent.py cleanly.\n",
+    "duration_seconds": 0.03167160600423813,
+    "workspace_id": "eb0fc622-bab9-4a97-9dc4-932a4c07a72f",
+    "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-q8o60413",
+    "timed_out": false
+  },
+  "build_integrity": {
+    "status": "PASS",
+    "evidence": {
+      "category": "BUILD",
+      "argv": [
+        "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "victims"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "duration_seconds": 0.2689297689939849,
+      "workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+      "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-pyff8bc2",
+      "timed_out": false
+    }
+  },
+  "p100_security": {
+    "status": "PASS",
+    "evidence": {
+      "category": "SECURITY",
+      "argv": [
+        "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "sandbox_checks/test_repair.py::test_same_attack_is_blocked_by_sandbox_patch"
+      ],
+      "exit_code": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 0.50s\n",
+      "stderr": "",
+      "duration_seconds": 1.3154266620113049,
+      "workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+      "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-pyff8bc2",
+      "timed_out": false
+    }
+  },
+  "p200_utility": {
+    "status": "PASS",
+    "evidence": {
+      "category": "UTILITY",
+      "argv": [
+        "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "sandbox_checks/test_repair.py::test_clean_review_remains_useful_after_sandbox_patch"
+      ],
+      "exit_code": 0,
+      "stdout": ".                                                                        [100%]\n1 passed in 0.40s\n",
+      "stderr": "",
+      "duration_seconds": 1.032867948000785,
+      "workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+      "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-pyff8bc2",
+      "timed_out": false
+    }
+  },
+  "compatibility": {
+    "status": "PASS",
+    "evidence": {
+      "category": "EXISTING_SUITE",
+      "argv": [
+        "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_canary_verifier.py",
+        "tests/test_customer_support_utility.py",
+        "tests/test_cli.py"
+      ],
+      "exit_code": 0,
+      "stdout": ".....................                                                    [100%]\n21 passed in 0.53s\n",
+      "stderr": "",
+      "duration_seconds": 1.2039023649995215,
+      "workspace_id": "9ce26f62-9a99-476f-b7ba-01f8c85b4dad",
+      "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-pyff8bc2",
+      "timed_out": false
+    }
+  },
+  "generated_regression": {
+    "status": "FAIL",
+    "evidence": {
+      "category": "GENERATED_REGRESSION",
+      "argv": [
+        "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        ".gauntlet/generated_tests/test_generated_repair.py"
+      ],
+      "exit_code": 2,
+      "stdout": "\n==================================== ERRORS ====================================\n_____ ERROR collecting .gauntlet/generated_tests/test_generated_repair.py ______\nImportError while importing test module '/private/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-q8o60413/.gauntlet/generated_tests/test_generated_repair.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n.gauntlet/generated_tests/test_generated_repair.py:3: in <module>\n    from victims.customer_support.models import ChatResponse\nE   ModuleNotFoundError: No module named 'victims.customer_support.models'\n=========================== short test summary info ============================\nERROR .gauntlet/generated_tests/test_generated_repair.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.28s\n",
+      "stderr": "",
+      "duration_seconds": 0.8614043359993957,
+      "workspace_id": "eb0fc622-bab9-4a97-9dc4-932a4c07a72f",
+      "working_directory": "/var/folders/r1/9g2zq05j1mv0v5v9lf907jw00000gn/T/gauntlet-sandbox-q8o60413",
+      "timed_out": false
+    }
+  },
+  "same_patch_integrity": "PASS",
+  "generated_workspace_integrity": "PASS",
+  "cleanup": "PASS",
+  "repository_immutability": "PASS",
+  "trusted_workspace_cleaned": true,
+  "generated_test_workspace_cleaned": true,
+  "original_repository_unchanged": true,
+  "started_at": "2026-09-29T05:19:06.048699Z",
+  "completed_at": "2026-09-29T05:19:11.372423Z",
+  "duration_seconds": 5.32319285000267
+}
