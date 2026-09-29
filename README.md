@@ -183,4 +183,8 @@ clean target. The next step requires a separately authorized final live run.
 
 `Kestrel-7749` is public synthetic data, not loaded from a real secret environment variable. Never substitute real credentials. Offline operation requires no credentials. Live M3 uses `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, and `NEBIUS_MODEL`; `.env.example` records the approved Token Factory base URL and selected `nvidia/Nemotron-3_5-Lightning` model. The client uses the OpenAI-compatible `/v1/chat/completions` API with Bearer authentication and JSON-schema structured output. It accepts only approved Nebius HTTPS hosts and reads actual environment variables; it does not automatically load `.env` files.
 
+## Judge demo
+
+`demo/gauntlet-m7.html` is the self-contained, offline M7.1 verified replay.
+
 The victim lives in the source repository and is run from the repository root. Only the Gauntlet package is installed. See [architecture](docs/architecture.md), [milestones](docs/milestones.md), and [build diary](docs/nebius-build-diary.md).
