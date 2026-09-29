@@ -2,7 +2,8 @@
 import json
 
 from gauntlet.remediation.models import (
-    GeneratedEditCandidate, GeneratedTestCandidate, RemediationRequest,
+    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    RemediationRequest,
 )
 
 
@@ -67,6 +68,28 @@ with no Markdown fences. No line-array element may contain LF or CR characters.
 Encode any other JSON control character using a standards-compliant escape."""
 
 
+LIVE_DEMO_SYSTEM_PROMPT = """You are generating one bounded repair candidate for an authorized defensive benchmark.
+Gauntlet owns provenance, authorization, source integrity, patch construction,
+sandbox execution, and verification. Your response is untrusted until those
+deterministic gates pass. Return only the rationale, source_edit,
+regression_test, and optional_policy_artifact required by the schema.
+Modify only the authorized target_path and target_symbol. Address the recorded
+untrusted-tool-data boundary generally while preserving legitimate behavior.
+Do not change tests or verifiers, remove the canary, bypass the attack harness,
+hard-code P100 or the known fixture, disable all tool data, or activate a test
+switch. `start_line` and `delete_line_count` are relative to the first line of
+the supplied target symbol. Choose the range exactly. Source outside the range
+is preserved exactly. Gauntlet will not expand or correct the range, repair
+indentation, or alter replacement lines.
+The regression_test must be executable pytest-compatible Python with an
+assertion that exercises the security property and legitimate behavior.
+Keep the complete response below 2,048 output tokens: rationale at most 100
+words, replacement_lines at most 120, regression_test.lines at most 40, and
+optional_policy_artifact at most 80 words or null. Each line-array element is
+one physical line with exact indentation and no LF or CR. Return only strict,
+standards-compliant JSON matching the supplied schema, without Markdown."""
+
+
 def _payload(request: RemediationRequest) -> dict:
     payload = request.model_dump(mode="json")
     return payload
@@ -89,6 +112,16 @@ def build_test_messages(
     payload["derived_patch"] = derived_patch
     return [
         {"role": "system", "content": TEST_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+    ]
+
+
+def build_live_demo_messages(request: RemediationRequest) -> list[dict[str, str]]:
+    """Build the single-request M7.2 candidate prompt without trusted answers."""
+    payload = _payload(request)
+    payload["required_output_schema"] = GeneratedRepairCandidate.model_json_schema()
+    return [
+        {"role": "system", "content": LIVE_DEMO_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
 

@@ -186,5 +186,17 @@ clean target. The next step requires a separately authorized final live run.
 ## Judge demo
 
 `demo/gauntlet-m7.html` is the self-contained, offline M7.1 verified replay.
+M7.2 adds a separate trusted localhost controller for an explicitly authorized
+live Kimi run:
+
+```bash
+PYTHONPATH=src:. .venv/bin/python scripts/run_m72_live_demo.py
+```
+
+Open `http://127.0.0.1:8072`. The page makes no provider request until **RUN
+LIVE GAUNTLET** is selected. Provider credentials stay in the local Python
+process; the browser receives only sanitized stage results, the proposed patch,
+and the evidence receipt. **VIEW VERIFIED REPLAY** remains available without a
+provider connection.
 
 The victim lives in the source repository and is run from the repository root. Only the Gauntlet package is installed. See [architecture](docs/architecture.md), [milestones](docs/milestones.md), and [build diary](docs/nebius-build-diary.md).

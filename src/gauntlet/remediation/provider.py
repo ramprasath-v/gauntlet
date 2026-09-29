@@ -8,17 +8,19 @@ from gauntlet.llm.nebius import (
     NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.models import (
-    GeneratedEditCandidate, GeneratedTestCandidate, RemediationRequest,
+    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    RemediationRequest,
 )
 from gauntlet.remediation.prompt import (
     build_edit_messages, build_edit_revision_messages,
-    build_test_messages, build_test_revision_messages,
+    build_live_demo_messages, build_test_messages, build_test_revision_messages,
 )
 from gauntlet.remediation.retry_models import SafeProviderCompletion
 
 
 EDIT_SCHEMA_NAME = "edit_candidate"
 TEST_SCHEMA_NAME = "test_candidate"
+LIVE_DEMO_SCHEMA_NAME = "repair_candidate"
 
 
 class RemediationProvider(Protocol):
@@ -57,6 +59,7 @@ class NebiusNemotronRemediationProvider:
     provider_name = "nebius_token_factory"
     max_edit_tokens = 2_048
     max_test_tokens = 2_048
+    max_live_demo_tokens = 2_048
 
     def __init__(self, client: NebiusTokenFactoryClient):
         self.client = client
@@ -78,6 +81,17 @@ class NebiusNemotronRemediationProvider:
             response_schema=GeneratedTestCandidate.model_json_schema(),
             schema_name=TEST_SCHEMA_NAME,
             max_tokens=self.max_test_tokens,
+        )
+
+    async def generate_live_demo_candidate(
+        self, request: RemediationRequest,
+    ) -> str:
+        """Generate one combined v3 candidate for the separately scoped M7.2 path."""
+        return await self._complete(
+            build_live_demo_messages(request),
+            response_schema=GeneratedRepairCandidate.model_json_schema(),
+            schema_name=LIVE_DEMO_SCHEMA_NAME,
+            max_tokens=self.max_live_demo_tokens,
         )
 
     async def generate_edit_revision(
