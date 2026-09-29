@@ -16,8 +16,10 @@ from uuid import uuid4
 
 from gauntlet.llm.nebius import NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL
 from gauntlet.remediation.candidate_artifact import (
-    CANDIDATE_ARTIFACT_SCHEMA_VERSION, CandidateArtifactReference,
+    CANDIDATE_ARTIFACT_SCHEMA_VERSION, EDIT_EVIDENCE_SCHEMA_VERSION,
+    CandidateArtifactReference, ValidatedEditArtifactReference,
     candidate_artifact_location, persist_candidate_artifact,
+    persist_validated_edit_artifact, validated_edit_artifact_location,
 )
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import (
@@ -281,7 +283,7 @@ class M42RepairOrchestrator:
         previous_edit: GeneratedEditCandidate | None,
         previous_failure: RepairFailure | None,
         previous_digest: str | None,
-        materialized: dict[str, str],
+        materialized: dict[str, object],
     ) -> tuple[
         GeneratedEditCandidate | None, str | None, RepairFailure | None,
         str, str, str, SafeProviderCompletion | None,
@@ -305,6 +307,7 @@ class M42RepairOrchestrator:
             completion = _provider_metadata(self.provider)
             provider_call = "PASS"
         except Exception as exc:
+            completion = _provider_metadata(self.provider)
             return (
                 None, None,
                 self._synthetic_failure(
@@ -312,8 +315,9 @@ class M42RepairOrchestrator:
                     code="provider_call_failed",
                     message="The remediation edit call failed safely.", error=exc,
                     failed_call="edit",
+                    truncated=_truncated(completion),
                 ),
-                "FAIL", "NOT_RUN", "NOT_RUN", None,
+                "FAIL", "NOT_RUN", "NOT_RUN", completion,
             )
         try:
             edit = parse_generated_edit_candidate(raw)
@@ -343,7 +347,7 @@ class M42RepairOrchestrator:
         previous_test: GeneratedTestCandidate | None,
         previous_failure: RepairFailure | None,
         previous_digest: str | None,
-        materialized: dict[str, str],
+        materialized: dict[str, object],
     ) -> tuple[
         GeneratedTestCandidate | None, RepairFailure | None,
         str, str, str, SafeProviderCompletion | None,
@@ -369,6 +373,7 @@ class M42RepairOrchestrator:
             completion = _provider_metadata(self.provider)
             provider_call = "PASS"
         except Exception as exc:
+            completion = _provider_metadata(self.provider)
             return (
                 None,
                 self._synthetic_failure(
@@ -376,8 +381,9 @@ class M42RepairOrchestrator:
                     code="provider_call_failed",
                     message="The remediation test call failed safely.", error=exc,
                     failed_call="test",
+                    truncated=_truncated(completion),
                 ),
-                "FAIL", "NOT_RUN", "NOT_RUN", None,
+                "FAIL", "NOT_RUN", "NOT_RUN", completion,
             )
         try:
             test = parse_generated_test_candidate(raw)
@@ -416,6 +422,7 @@ class M42RepairOrchestrator:
 
         accepted_edit: GeneratedEditCandidate | None = None
         accepted_patch: str | None = None
+        accepted_edit_artifact: ValidatedEditArtifactReference | None = None
         previous_edit: GeneratedEditCandidate | None = None
         previous_test: GeneratedTestCandidate | None = None
         previous_failure: RepairFailure | None = None
@@ -425,7 +432,7 @@ class M42RepairOrchestrator:
         for attempt_number in range(1, MAX_PROVIDER_ATTEMPTS + 1):
             attempt_started_at = datetime.now(timezone.utc)
             attempt_started = monotonic()
-            materialized: dict[str, str] = {}
+            materialized: dict[str, object] = {}
             failure: RepairFailure | None = None
             failed_call: str | None = None
             proposal: RepairProposal | None = None
@@ -446,6 +453,7 @@ class M42RepairOrchestrator:
             patch_proof = "NOT_RUN"
             edit_completion: SafeProviderCompletion | None = None
             test_completion: SafeProviderCompletion | None = None
+            edit_artifact = accepted_edit_artifact
 
             # ---------- EDIT PHASE ----------
             if accepted_edit is not None:
@@ -473,6 +481,48 @@ class M42RepairOrchestrator:
                 if failure is None:
                     accepted_edit = edit_candidate
                     accepted_patch = derived_patch
+                    if evidence_path is not None:
+                        assert edit_candidate is not None
+                        assert derived_patch is not None
+                        trusted_original_lines = materialized.get(
+                            "trusted_original_lines"
+                        )
+                        assert isinstance(trusted_original_lines, list)
+                        assert all(
+                            isinstance(line, str) for line in trusted_original_lines
+                        )
+                        edit_id = str(uuid4())
+                        artifact_path, relative_artifact_path = (
+                            validated_edit_artifact_location(
+                                evidence_path, attempt_number, edit_id
+                            )
+                        )
+                        artifact = persist_validated_edit_artifact(
+                            edit_candidate,
+                            path=artifact_path,
+                            edit_id=edit_id,
+                            run_id=run_id,
+                            originating_attempt=attempt_number,
+                            provider=self.provider.provider_name,
+                            model=self.provider.model_name,
+                            trace_id=request.repair_context.trace_id,
+                            boundary_id=request.repair_context.boundary_id,
+                            evidence_ids=request.repair_context.evidence_ids,
+                            target_path=request.repair_context.target_path,
+                            target_symbol=request.repair_context.target_symbol,
+                            source_hash=request.repair_context.source_hash,
+                            trusted_original_lines=trusted_original_lines,
+                            derived_patch=derived_patch,
+                        )
+                        edit_artifact = ValidatedEditArtifactReference(
+                            schema_version=EDIT_EVIDENCE_SCHEMA_VERSION,
+                            edit_id=edit_id,
+                            originating_attempt=attempt_number,
+                            path=relative_artifact_path,
+                            edit_candidate_digest=artifact.edit_candidate_digest,
+                            integrity_digest=artifact.integrity_digest,
+                        )
+                        accepted_edit_artifact = edit_artifact
 
             # ---------- TEST PHASE ----------
             if failure is None and derived_patch is not None:
@@ -517,12 +567,16 @@ class M42RepairOrchestrator:
 
             # ---------- EXECUTE ----------
             if failure is None and combined is not None:
+                patch = materialized["patch"]
+                regression_test = materialized["regression_test"]
+                assert isinstance(patch, str)
+                assert isinstance(regression_test, str)
                 proposal = RepairProposal(
                     repair_id=str(uuid4()),
                     **request.repair_context.model_dump(),
                     rationale=edit_candidate.rationale if edit_candidate else "",
-                    patch=materialized["patch"],
-                    regression_test=materialized["regression_test"],
+                    patch=patch,
+                    regression_test=regression_test,
                     optional_policy_artifact=(
                         edit_candidate.optional_policy_artifact
                         if edit_candidate else None
@@ -611,6 +665,7 @@ class M42RepairOrchestrator:
                 candidate_field_digests=field_digests,
                 candidate_field_lengths=field_lengths,
                 candidate_artifact=candidate_artifact,
+                edit_artifact=edit_artifact,
                 edit_provider_call=edit_provider_call,
                 edit_decode=edit_decode,
                 edit_validation=edit_validation,

@@ -4,6 +4,7 @@ from gauntlet.llm.nebius import (
     NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_REASONING_DISABLED,
     NEMOTRON_SUPER_MODEL,
+    QWEN_35_MODEL,
     NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.models import (
@@ -124,7 +125,7 @@ class NebiusNemotronRemediationProvider:
         reasoning_options = {}
         if self.model_name == NEMOTRON_SUPER_MODEL:
             reasoning_options["reasoning_directive"] = NEMOTRON_REASONING_DISABLED
-        elif self.model_name == NEMOTRON_LIGHTNING_MODEL:
+        elif self.model_name in {NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL}:
             reasoning_options["chat_template_kwargs"] = {"enable_thinking": False}
         return await self.client.complete(
             messages,

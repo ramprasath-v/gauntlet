@@ -183,7 +183,7 @@ def validate_source_edit(
     repository_root: Path,
     *,
     attempt: int = 1,
-    materialized_output: dict[str, str] | None = None,
+    materialized_output: dict[str, object] | None = None,
 ) -> str | RepairFailure:
     """Validate the source-edit call output; return the derived patch or failure."""
     candidate_id = str(uuid4())
@@ -291,6 +291,7 @@ def validate_source_edit(
 
     if materialized_output is not None:
         materialized_output["patch"] = patch
+        materialized_output["trusted_original_lines"] = list(symbol_lines[start:end])
     return patch
 
 
@@ -299,7 +300,7 @@ def validate_regression_test(
     repair_context: RepairContext,
     *,
     attempt: int = 1,
-    materialized_output: dict[str, str] | None = None,
+    materialized_output: dict[str, object] | None = None,
 ) -> str | RepairFailure:
     """Validate the regression-test call output; return test source or failure."""
     candidate_id = str(uuid4())
@@ -355,7 +356,7 @@ def validate_candidate(
     repository_root: Path,
     *,
     attempt: int = 1,
-    materialized_output: dict[str, str] | None = None,
+    materialized_output: dict[str, object] | None = None,
 ) -> RepairProposal | RepairFailure:
     """Validate in fixed order and never repair model-generated artifacts."""
     materialized: dict[str, str] = {}

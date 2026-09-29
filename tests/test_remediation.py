@@ -529,7 +529,7 @@ async def test_lightning_provider_disables_thinking_without_no_think_directive()
         }
 
 
-async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
+async def test_qwen_provider_disables_thinking_for_bounded_structured_output():
     observed = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -559,7 +559,14 @@ async def test_non_nemotron_model_gets_no_model_specific_reasoning_control():
 
     assert observed["edit_candidate"]["messages"][0]["content"] == EDIT_SYSTEM_PROMPT
     assert observed["test_candidate"]["messages"][0]["content"] == TEST_SYSTEM_PROMPT
-    assert "chat_template_kwargs" not in observed["edit_candidate"]
+    assert observed["edit_candidate"]["chat_template_kwargs"] == {
+        "enable_thinking": False
+    }
+    assert observed["test_candidate"]["chat_template_kwargs"] == {
+        "enable_thinking": False
+    }
+    assert observed["edit_candidate"]["max_tokens"] == 2_048
+    assert observed["test_candidate"]["max_tokens"] == 2_048
     assert "reasoning_effort" not in observed["edit_candidate"]
 
 
@@ -852,6 +859,9 @@ def test_prompts_use_structured_lines_without_patch_or_multiline_test_strings():
     assert "expected_original_lines" not in source_edit_schema["properties"]
     test_schema = GeneratedTestCandidate.model_json_schema()
     assert set(test_schema["properties"]) == {"regression_test"}
+    assert test_schema["$defs"]["StructuredRegressionTest"]["properties"][
+        "lines"
+    ]["maxItems"] == 40
     assert "regression_test.lines" in TEST_SYSTEM_PROMPT
     assert '"patch"' not in TEST_SYSTEM_PROMPT
     for forbidden in (

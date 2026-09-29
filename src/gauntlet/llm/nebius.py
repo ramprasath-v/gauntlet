@@ -283,13 +283,14 @@ class NebiusTokenFactoryClient:
             dict(chat_template_kwargs) if chat_template_kwargs is not None else None
         )
         if serialized_chat_template_kwargs is not None:
-            if self.config.model != NEMOTRON_LIGHTNING_MODEL:
+            if self.config.model not in {NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL}:
                 raise ValueError(
-                    "chat_template_kwargs reasoning control requires Nemotron-3.5-Lightning"
+                    "chat_template_kwargs reasoning control requires an approved "
+                    "hybrid-thinking remediation model"
                 )
             if serialized_chat_template_kwargs != {"enable_thinking": False}:
                 raise ValueError(
-                    "Nemotron-3.5-Lightning requires enable_thinking=false for remediation"
+                    "Remediation requires enable_thinking=false"
                 )
         if max_tokens is not None and (
             isinstance(max_tokens, bool) or not isinstance(max_tokens, int)

@@ -10,7 +10,9 @@ from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
     NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL, NebiusTokenFactoryClient,
 )
-from gauntlet.remediation.candidate_artifact import load_candidate_artifact
+from gauntlet.remediation.candidate_artifact import (
+    load_candidate_artifact, load_validated_edit_artifact,
+)
 from gauntlet.remediation.fake import FakeRemediationProvider
 from gauntlet.remediation.models import (
     GeneratedEditCandidate, GeneratedTestCandidate, StructuredRegressionTest,
@@ -332,6 +334,75 @@ async def test_validation_failure_retries_test_only_and_persists_verified_run(
     feedback = provider.test_revisions[0]["failure_feedback"]
     assert feedback["failure_stage"] == "regression_syntax"
     assert feedback["failed_call"] == "test"
+
+
+async def test_validated_edit_is_retained_when_all_test_calls_fail(
+    serialized_trace, tmp_path
+):
+    class LengthTerminatingTestProvider(ScriptedRetryProvider):
+        async def generate_test(self, request, *, derived_patch):
+            self.test_calls += 1
+            self._metadata = SafeProviderCompletion(
+                http_status=200,
+                response_id=f"offline-length-{self.test_calls}",
+                returned_model=self.model_name,
+                finish_reason="length",
+                content_type="null",
+                content_length=None,
+                prompt_tokens=100,
+                completion_tokens=2_048,
+                total_tokens=2_148,
+            )
+            raise RuntimeError("synthetic length termination")
+
+    provider = LengthTerminatingTestProvider(
+        edit_outputs=[valid_edit_raw], test_outputs=[],
+    )
+    evidence_path = tmp_path / "incomplete-run.json"
+    before = repository_digest(ROOT)
+
+    result = await M42RepairOrchestrator(ROOT, provider).run(
+        serialized_trace, evidence_path=evidence_path
+    )
+
+    assert isinstance(result, RepairRunFailed)
+    assert provider.edit_calls == 1
+    assert provider.test_calls == 3
+    assert all(
+        attempt.test_provider_completion is not None
+        and attempt.test_provider_completion.finish_reason == "length"
+        and attempt.test_provider_completion.completion_tokens == 2_048
+        for attempt in result.attempts
+    )
+    assert all(
+        attempt.failure is not None
+        and attempt.failure.diagnostics["truncated"] is True
+        for attempt in result.attempts
+    )
+    assert all(attempt.candidate_artifact is None for attempt in result.attempts)
+    references = [attempt.edit_artifact for attempt in result.attempts]
+    assert all(reference is not None for reference in references)
+    assert len({reference.path for reference in references if reference}) == 1
+    reference = references[0]
+    assert reference is not None
+    artifact = load_validated_edit_artifact(
+        evidence_path.parent / reference.path
+    )
+    assert artifact.validation_result == "PASS"
+    assert artifact.source_edit.start_line >= 1
+    assert artifact.source_edit.replacement_lines
+    assert artifact.trusted_original_lines
+    assert artifact.derived_patch.startswith("--- a/")
+    assert not hasattr(artifact, "regression_test")
+    assert load_repair_run(evidence_path) == result
+    assert repository_digest(ROOT) == before
+
+    artifact_path = evidence_path.parent / reference.path
+    artifact_path.write_text(
+        artifact_path.read_text().replace("--- a/", "--- a/tampered-", 1)
+    )
+    with pytest.raises(ValidationError, match="integrity failed"):
+        load_repair_run(evidence_path)
 
 
 @pytest.mark.parametrize(

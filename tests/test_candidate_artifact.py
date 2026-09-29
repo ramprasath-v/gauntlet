@@ -15,13 +15,17 @@ from gauntlet.remediation.candidate_artifact import (
     LegacyRepairCandidateArtifact,
     RepairCandidateArtifactV2,
     _artifact_digest,
+    edit_candidate_identity,
     _legacy_candidate_identity,
     candidate_identity,
     load_candidate_artifact,
+    load_validated_edit_artifact,
     persist_candidate_artifact,
+    persist_validated_edit_artifact,
 )
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, StructuredRegressionTest, StructuredSourceEdit,
+    GeneratedEditCandidate, GeneratedRepairCandidate, StructuredRegressionTest,
+    StructuredSourceEdit,
 )
 from gauntlet.sandbox.workspace import repository_digest
 
@@ -87,6 +91,47 @@ def test_candidate_artifact_preserves_structured_and_derived_content_exactly(tmp
     assert loaded.candidate_digest == expected_digest
     assert loaded.candidate_field_digests == expected_fields
     assert loaded.integrity_digest == artifact.integrity_digest
+
+
+def test_validated_edit_artifact_is_incomplete_integrity_bound_evidence(tmp_path):
+    complete = candidate()
+    edit = GeneratedEditCandidate(
+        rationale=complete.rationale,
+        source_edit=complete.source_edit,
+        optional_policy_artifact=complete.optional_policy_artifact,
+    )
+    path = tmp_path / "validated-edit.json"
+    artifact = persist_validated_edit_artifact(
+        edit,
+        path=path,
+        edit_id=str(uuid4()),
+        run_id=str(uuid4()),
+        originating_attempt=1,
+        provider="offline_scripted_provider",
+        model="Qwen/Qwen3.5-397B-A17B",
+        trace_id="trace-id",
+        boundary_id="boundary-id",
+        evidence_ids=["evidence-id"],
+        target_path=TARGET,
+        target_symbol="CustomerSupportAgent.chat",
+        source_hash="0" * 64,
+        trusted_original_lines=["        old_value = True"],
+        derived_patch="--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n",
+    )
+
+    loaded = load_validated_edit_artifact(path)
+    digest, fields = edit_candidate_identity(edit)
+    assert loaded.validation_result == "PASS"
+    assert loaded.edit_candidate() == edit
+    assert loaded.edit_candidate_digest == digest
+    assert loaded.edit_field_digests == fields
+    assert loaded.trusted_original_lines == ["        old_value = True"]
+    assert loaded.derived_patch == artifact.derived_patch
+    assert not hasattr(loaded, "regression_test")
+
+    path.write_text(path.read_text().replace("+new", "+tampered", 1))
+    with pytest.raises(ValidationError, match="integrity failed"):
+        load_validated_edit_artifact(path)
 
 
 @pytest.mark.parametrize("field", [

@@ -5,7 +5,9 @@ from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
-from gauntlet.remediation.candidate_artifact import CandidateArtifactReference
+from gauntlet.remediation.candidate_artifact import (
+    CandidateArtifactReference, ValidatedEditArtifactReference,
+)
 from gauntlet.remediation.models import RepairFailure, RepairProposal, StrictModel
 from gauntlet.sandbox.m4_models import PatchProof
 
@@ -35,6 +37,7 @@ class RepairAttempt(StrictModel):
     candidate_field_digests: dict[str, str]
     candidate_field_lengths: dict[str, int]
     candidate_artifact: CandidateArtifactReference | None = None
+    edit_artifact: ValidatedEditArtifactReference | None = None
     edit_provider_call: StepOutcome
     edit_decode: StepOutcome
     edit_validation: StepOutcome
