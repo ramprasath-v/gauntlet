@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import (
-    NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL, NebiusTokenFactoryClient,
+    NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL, QWEN_35_MODEL,
+    NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.candidate_artifact import (
     load_candidate_artifact, load_validated_edit_artifact,
@@ -106,7 +107,9 @@ class ScriptedRetryProvider:
         return self._metadata
 
 
-@pytest.mark.parametrize("model", [NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL])
+@pytest.mark.parametrize("model", [
+    NEMOTRON_LIGHTNING_MODEL, NEMOTRON_SUPER_MODEL, QWEN_35_MODEL,
+])
 def test_m42_accepts_approved_live_remediation_models(model):
     provider = ScriptedRetryProvider([], [])
     provider.model_name = model
@@ -118,7 +121,7 @@ def test_m42_accepts_approved_live_remediation_models(model):
 
 def test_m42_rejects_unapproved_provider_configuration():
     provider = ScriptedRetryProvider([], [])
-    provider.model_name = "nvidia/nemotron-3-super-120b-a12b"
+    provider.model_name = "unapproved/example-model"
     with pytest.raises(ValueError, match="explicitly approved"):
         M42RepairOrchestrator(ROOT, provider)
 
