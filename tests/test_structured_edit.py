@@ -43,7 +43,7 @@ async def trusted_context():
     )
 
 
-def candidate(source, *, start, delete, expected, replacement, test_lines=None):
+def candidate(source, *, start, delete, replacement, test_lines=None):
     return GeneratedRepairCandidate(
         rationale="Apply the exact model-proposed source edit.",
         source_edit=StructuredSourceEdit(
@@ -52,7 +52,6 @@ def candidate(source, *, start, delete, expected, replacement, test_lines=None):
             source_hash=source.source_hash,
             start_line=start,
             delete_line_count=delete,
-            expected_original_lines=expected,
             replacement_lines=replacement,
         ),
         regression_test=StructuredRegressionTest(lines=(test_lines or [
@@ -60,6 +59,17 @@ def candidate(source, *, start, delete, expected, replacement, test_lines=None):
         ])),
         optional_policy_artifact=None,
     )
+
+
+def test_model_schema_omits_trusted_original_lines():
+    schema = GeneratedRepairCandidate.model_json_schema()
+    edit_schema = schema["$defs"]["StructuredSourceEdit"]
+
+    assert "expected_original_lines" not in edit_schema["properties"]
+    assert set(edit_schema["properties"]) == {
+        "target_path", "target_symbol", "source_hash", "start_line",
+        "delete_line_count", "replacement_lines",
+    }
 
 
 @pytest.mark.parametrize("operation", ["replacement", "insertion", "deletion"])
@@ -70,23 +80,19 @@ async def test_valid_structured_edit_operations_derive_unified_diff(
     lines = source.source_text.splitlines()
     if operation == "replacement":
         start, delete = 2, 1
-        expected = [lines[1]]
         replacement = [lines[1] + "  # model replacement"]
     elif operation == "insertion":
         start, delete = 2, 0
-        expected = []
         replacement = ["        model_inserted_value = True"]
     else:
         comment_index = lines.index(
             "                # Instrument the actual integration seam without storing system context."
         )
         start, delete = comment_index + 1, 1
-        expected = [lines[comment_index]]
         replacement = []
 
     proposal = validate_candidate(
-        candidate(source, start=start, delete=delete, expected=expected,
-                  replacement=replacement),
+        candidate(source, start=start, delete=delete, replacement=replacement),
         context, ROOT,
     )
 
@@ -103,8 +109,7 @@ def test_structured_line_elements_reject_lf_and_cr(control):
     with pytest.raises(ValidationError, match="cannot contain LF or CR"):
         StructuredSourceEdit(
             target_path=TARGET, target_symbol=SYMBOL, source_hash="0" * 64,
-            start_line=1, delete_line_count=1,
-            expected_original_lines=[control], replacement_lines=["replacement"],
+            start_line=1, delete_line_count=1, replacement_lines=[control],
         )
 
 
@@ -117,8 +122,6 @@ def test_structured_line_elements_reject_lf_and_cr(control):
          "patch_authorization", "unauthorized_edit_target"),
         ({"source_hash": "0" * 64},
          "source_identity", "candidate_source_hash_mismatch"),
-        ({"expected_original_lines": ["        stale = True"]},
-         "source_identity", "expected_original_lines_mismatch"),
         ({"start_line": 100_000},
          "patch_authorization", "edit_range_outside_symbol"),
     ],
@@ -134,7 +137,6 @@ async def test_structured_edit_authorization_and_source_anchor_failures(
         source_hash=source.source_hash,
         start_line=2,
         delete_line_count=1,
-        expected_original_lines=[lines[1]],
         replacement_lines=[lines[1] + "  # replacement"],
     ).model_copy(update=change)
     result = validate_candidate(
@@ -151,6 +153,42 @@ async def test_structured_edit_authorization_and_source_anchor_failures(
     assert (result.failure_stage, result.failure_code) == (stage, code)
 
 
+async def test_trusted_source_is_not_read_before_claim_and_hash_gates(
+    trusted_context, monkeypatch
+):
+    source, context = trusted_context
+    candidate_value = candidate(
+        source, start=2, delete=1, replacement=["        replacement = True"]
+    )
+
+    def unexpected_read(_path):
+        raise AssertionError("trusted source read occurred before identity gates")
+
+    monkeypatch.setattr(Path, "read_bytes", unexpected_read)
+    for edit in (
+        candidate_value.source_edit.model_copy(
+            update={"target_symbol": "Other.chat"}
+        ),
+        candidate_value.source_edit.model_copy(update={"source_hash": "0" * 64}),
+    ):
+        result = validate_candidate(
+            candidate_value.model_copy(update={"source_edit": edit}), context, ROOT
+        )
+        assert isinstance(result, RepairFailure)
+
+
+def test_deterministic_validator_contains_no_benchmark_repair_recipe():
+    validator_source = (ROOT / "src/gauntlet/remediation/validation.py").read_text()
+
+    for repair_fragment in (
+        "privileged_context=False",
+        "External review content",
+        "enforce_data_only_boundary=True",
+        "_test_only_known_good_change",
+    ):
+        assert repair_fragment not in validator_source
+
+
 async def test_reconstruction_and_diff_contain_exact_model_replacement_only(
     trusted_context, tmp_path
 ):
@@ -163,7 +201,7 @@ async def test_reconstruction_and_diff_contain_exact_model_replacement_only(
     ]
     proposal = validate_candidate(
         candidate(
-            source, start=2, delete=1, expected=[bounded_lines[1]],
+            source, start=2, delete=1,
             replacement=replacement,
             test_lines=["def test_materialization():", "    assert True"],
         ),
@@ -213,7 +251,7 @@ async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
     invalid = lines[0].removesuffix(":")
     proposal = validate_candidate(
         candidate(
-            source, start=1, delete=1, expected=[lines[0]],
+            source, start=1, delete=1,
             replacement=[invalid],
         ),
         context, ROOT,
@@ -229,3 +267,23 @@ async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
         "compile", "compile_failed",
     )
     assert repository_digest(ROOT) == before_digest
+
+
+async def test_valid_but_incorrect_model_range_is_not_silently_corrected(
+    trusted_context
+):
+    source, context = trusted_context
+    lines = source.source_text.splitlines()
+    chosen_line = 2
+    replacement = [lines[chosen_line - 1] + "  # wrong semantic location"]
+
+    proposal = validate_candidate(
+        candidate(
+            source, start=chosen_line, delete=1, replacement=replacement,
+        ),
+        context, ROOT,
+    )
+
+    assert isinstance(proposal, RepairProposal)
+    assert f"-{lines[chosen_line - 1]}" in proposal.patch
+    assert f"+{replacement[0]}" in proposal.patch

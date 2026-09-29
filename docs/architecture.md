@@ -77,8 +77,9 @@ M3.4 adds the candidate-validation boundary. Provider JSON is decoded into
 `GeneratedRepairCandidate` using only exact-field, basic-type, and size checks.
 Each source or regression line rejects embedded LF and CR characters.
 `validate_candidate` then checks, in order: non-empty rationale, trusted path,
-symbol and source hash, a range wholly inside the authorized symbol, an exact
-expected-source slice, canary authorization, Python syntax,
+symbol and source hash, and a model-selected range wholly inside the authorized
+symbol. It reads the original slice for that exact range only from the trusted,
+hash-verified source, then checks canary authorization and Python syntax,
 test-function/assertion structure, and an optional non-empty policy artifact.
 It splices only the model's replacement lines, derives a unified diff, and joins
 the model's regression lines with LF; it performs no semantic repairs. A passing candidate
@@ -181,7 +182,7 @@ is verified offline only; a live bounded run requires separate authorization.
 
 When M4.2 receives a run-evidence path, each successfully decoded
 `GeneratedRepairCandidate` is written independently as
-`gauntlet.repair-candidate.v2`, including candidates that later fail
+`gauntlet.repair-candidate.v3`, including candidates that later fail
 authorization, Python, or test-structure validation. Its rationale, structured
 source edit, structured regression test, and optional policy artifact are
 serialized without normalization or repair. When source authorization and
@@ -189,8 +190,11 @@ identity permit deterministic materialization, the artifact also stores and
 digests the mechanically derived unified diff and regression source. Loading
 verifies the candidate digest, every field digest, the derived-artifact digests,
 and an integrity digest over the complete artifact metadata and content.
-Existing `gauntlet.repair-candidate.v1` artifacts retain their original loader
-and digest validation.
+Existing `gauntlet.repair-candidate.v1` and
+`gauntlet.repair-candidate.v2` artifacts retain their original schema-specific
+loaders and digest validation. Version two preserves its historical
+`expected_original_lines` field solely for faithful evidence loading; new
+version-three candidates do not contain that field.
 
 The candidate artifact adds only trusted run ID, attempt number,
 provider/model, timestamp, trace/boundary/evidence IDs, target identity, and

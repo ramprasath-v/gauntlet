@@ -37,7 +37,6 @@ class FakeRemediationProvider:
                 source_hash=context.source_hash,
                 start_line=start + 1,
                 delete_line_count=len(original),
-                expected_original_lines=original,
                 replacement_lines=replacement,
             ),
             regression_test=StructuredRegressionTest(lines=[

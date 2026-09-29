@@ -194,19 +194,6 @@ def validate_candidate(
             }, attempt=attempt,
         )
 
-    observed_original = symbol_lines[start:end]
-    if observed_original != edit.expected_original_lines:
-        return _failure(
-            candidate, repair_context, candidate_id,
-            stage="source_identity", code="expected_original_lines_mismatch",
-            message="Structured edit does not match the selected source slice.",
-            diagnostics={
-                "start_line": edit.start_line,
-                "expected_line_count": len(edit.expected_original_lines),
-                "observed_line_count": len(observed_original),
-            }, attempt=attempt,
-        )
-
     patched_symbol_lines = (
         symbol_lines[:start] + edit.replacement_lines + symbol_lines[end:]
     )

@@ -1,0 +1,320 @@
+{
+  "schema_version": "gauntlet.repair-run.v1",
+  "result": {
+    "status": "FAILED",
+    "run_id": "46f6a85b-db5e-4f20-8936-36c1927b3460",
+    "trace_id": "291b307f-3501-48ab-9915-d9828ceeb414",
+    "boundary_id": "7a7d7578-d328-40b8-a273-19b8f8584a26",
+    "evidence_ids": [
+      "f2b78dc3-fb4d-4ee6-a6e3-1ac184554679",
+      "5a459027-d21a-44f8-8066-eb35dcc6debc",
+      "593f276f-ebc2-4b88-a310-bb083410b373",
+      "28188347-f988-4dc0-b0c6-224a87bd7ef1",
+      "5db7bdcd-3928-4a5e-ab95-a53494b54d0f"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "Qwen/Qwen3.5-397B-A17B",
+    "total_attempts": 3,
+    "attempts": [
+      {
+        "attempt": 1,
+        "candidate_id": "cb60b440-d913-4cf0-bb87-fe0024b58960",
+        "previous_failure_id": null,
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "4af8b23749f5bd1eb68d9308f3db3059b83a7cffd3100bf78a0dc3663153b49d",
+        "candidate_field_digests": {
+          "rationale": "174febfda85a8d0e0af434a7524b9adde3e4fcad052d99890f65c6c13d1ffad2",
+          "source_edit": "7af25092b05bf7b4947d74926d2f5f98dbaf1cb718a1a7e30830e50a5bfdf9e2",
+          "regression_test": "94cc5c0464addd42f784b68183c213de5d9d764ef87e7995c27cec38c138c54a",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 344,
+          "source_edit": 748,
+          "regression_test": 851,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "cb60b440-d913-4cf0-bb87-fe0024b58960",
+          "attempt_number": 1,
+          "path": "structured-live-m4-20260928T071736Z.candidates/attempt-01-cb60b440-d913-4cf0-bb87-fe0024b58960.json",
+          "candidate_digest": "4af8b23749f5bd1eb68d9308f3db3059b83a7cffd3100bf78a0dc3663153b49d",
+          "integrity_digest": "10a037c9cc3ddc576ec45618d2ace9805cb21e5690598c528a435d0838d8485f"
+        },
+        "provider_call": "PASS",
+        "candidate_decode": "PASS",
+        "candidate_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "32575bb2-9d70-4838-9cff-dc4ec9889d01",
+        "failure": {
+          "failure_id": "0afcec4e-cb97-442a-86d0-b6d1740c36f6",
+          "repair_id": "32575bb2-9d70-4838-9cff-dc4ec9889d01",
+          "candidate_id": "cb60b440-d913-4cf0-bb87-fe0024b58960",
+          "candidate_digest": "4af8b23749f5bd1eb68d9308f3db3059b83a7cffd3100bf78a0dc3663153b49d",
+          "candidate_field_digests": {
+            "rationale": "174febfda85a8d0e0af434a7524b9adde3e4fcad052d99890f65c6c13d1ffad2",
+            "source_edit": "7af25092b05bf7b4947d74926d2f5f98dbaf1cb718a1a7e30830e50a5bfdf9e2",
+            "regression_test": "94cc5c0464addd42f784b68183c213de5d9d764ef87e7995c27cec38c138c54a",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 344,
+            "source_edit": 748,
+            "regression_test": 851,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "291b307f-3501-48ab-9915-d9828ceeb414",
+          "boundary_id": "7a7d7578-d328-40b8-a273-19b8f8584a26",
+          "evidence_ids": [
+            "f2b78dc3-fb4d-4ee6-a6e3-1ac184554679",
+            "5a459027-d21a-44f8-8066-eb35dcc6debc",
+            "593f276f-ebc2-4b88-a310-bb083410b373",
+            "28188347-f988-4dc0-b0c6-224a87bd7ef1",
+            "5db7bdcd-3928-4a5e-ab95-a53494b54d0f"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "compile",
+          "failure_code": "compile_failed",
+          "message": "Patched Python source did not compile.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+            "exit_code": 1,
+            "timed_out": false,
+            "stdout": "*** Error compiling 'victims/clean_customer_support/agent.py'...\n  File \"victims/clean_customer_support/agent.py\", line 34\n    events[-1].context_flow = ContextFlow(\n                                         ^\nSyntaxError: '(' was never closed\n\n",
+            "stderr": "",
+            "workspace_id": "f001f097-dfbb-40d7-8237-aaa9b4c9c320"
+          },
+          "attempt": 1,
+          "created_at": "2026-09-28T07:17:44.380601Z"
+        },
+        "proof_id": null,
+        "workspace_id": "f001f097-dfbb-40d7-8237-aaa9b4c9c320",
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-9ecff1c253d68a4b",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 2353,
+          "prompt_tokens": 2463,
+          "completion_tokens": 925,
+          "total_tokens": 3388
+        },
+        "started_at": "2026-09-28T07:17:36.116544Z",
+        "completed_at": "2026-09-28T07:17:44.434572Z",
+        "duration_seconds": 8.31805891598924
+      },
+      {
+        "attempt": 2,
+        "candidate_id": "fb6d3a5f-ccd6-4519-bc61-ef82d5ebf432",
+        "previous_failure_id": "0afcec4e-cb97-442a-86d0-b6d1740c36f6",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "candidate_field_digests": {},
+        "candidate_field_lengths": {},
+        "candidate_artifact": null,
+        "provider_call": "FAIL",
+        "candidate_decode": "NOT_RUN",
+        "candidate_validation": "NOT_RUN",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "83077819-c7f5-4c35-9360-d59c64756ce2",
+          "repair_id": null,
+          "candidate_id": "fb6d3a5f-ccd6-4519-bc61-ef82d5ebf432",
+          "candidate_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "candidate_field_digests": {},
+          "candidate_field_lengths": {},
+          "trace_id": "291b307f-3501-48ab-9915-d9828ceeb414",
+          "boundary_id": "7a7d7578-d328-40b8-a273-19b8f8584a26",
+          "evidence_ids": [
+            "f2b78dc3-fb4d-4ee6-a6e3-1ac184554679",
+            "5a459027-d21a-44f8-8066-eb35dcc6debc",
+            "593f276f-ebc2-4b88-a310-bb083410b373",
+            "28188347-f988-4dc0-b0c6-224a87bd7ef1",
+            "5db7bdcd-3928-4a5e-ab95-a53494b54d0f"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "provider_call_failed",
+          "message": "The remediation provider call failed safely.",
+          "diagnostics": {
+            "error_type": "NebiusCompletionError",
+            "detail": "Nebius completion LENGTH_TERMINATED_WITHOUT_CONTENT: {\"choice_count\": 1, \"completion_tokens\": 4096, \"content_length\": null, \"content_type\": \"null\", \"finish_reason\": \"length\", \"http_status\": 200, \"message_field_types\": {\"annotations\": \"null\", \"audio\": \"null\", \"content\": \"null\", \"function_call\": \"null\", \"reasoning\": \"str\", \"refusal\": \"null\", \"role\": \"str\", \"tool_calls\": \"list\"}, \"message_role\": \"assistant\", \"object_type\": \"chat.completion\", \"prompt_tokens\": 3414, \"reasoning_content_present\": false, \"reasoning_content_type\": null, \"reasoning_present\": true, \"reasoning_type\": \"str\", \"refusal_present\": true, \"refusal_type\": \"null\", \"response_id\": \"chatcmpl-a432a43c517fe039\", \"returned_model\": \"Qwen/Qwen3.5-397B-A17B\", \"selected_choice_index\": 0, \"tool_calls_count\": 0, \"tool_calls_present\": true, \"total_tokens\": 7510}"
+          },
+          "attempt": 2,
+          "created_at": "2026-09-28T07:18:12.925887Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": null,
+        "started_at": "2026-09-28T07:17:44.451274Z",
+        "completed_at": "2026-09-28T07:18:12.925965Z",
+        "duration_seconds": 28.474662705004448
+      },
+      {
+        "attempt": 3,
+        "candidate_id": "249833fd-0c9a-4aa9-96d9-8345ecf681c6",
+        "previous_failure_id": "83077819-c7f5-4c35-9360-d59c64756ce2",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "b70df798d3fa35a2e47f1896b319ff2bbab074fb1d3c50a4c8677af2c4940a36",
+        "candidate_field_digests": {
+          "rationale": "346ad7dde9c1c588260a407e8b2427a2f6e2c645e9cc2b778fa7e4f53bb24b11",
+          "source_edit": "4f23a8bc3154adb1a1fe930b13cc2ca427b3270b8fda39c60d99b4a06d91dcb7",
+          "regression_test": "0b5e785ab2ffe7dee6d3a9e7587a83d70aaf6931686401085429711a088838b3",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 333,
+          "source_edit": 775,
+          "regression_test": 609,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "249833fd-0c9a-4aa9-96d9-8345ecf681c6",
+          "attempt_number": 3,
+          "path": "structured-live-m4-20260928T071736Z.candidates/attempt-03-249833fd-0c9a-4aa9-96d9-8345ecf681c6.json",
+          "candidate_digest": "b70df798d3fa35a2e47f1896b319ff2bbab074fb1d3c50a4c8677af2c4940a36",
+          "integrity_digest": "cbd918ef061d12437abba9d329f00d6215903190bfe624aabf7bd0b99c5ad656"
+        },
+        "provider_call": "PASS",
+        "candidate_decode": "PASS",
+        "candidate_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "2f68e218-70ab-443e-9bda-48fe15c2f52d",
+        "failure": {
+          "failure_id": "f0af8d70-24c0-4fd9-9ed3-2f959534d0e4",
+          "repair_id": "2f68e218-70ab-443e-9bda-48fe15c2f52d",
+          "candidate_id": "249833fd-0c9a-4aa9-96d9-8345ecf681c6",
+          "candidate_digest": "b70df798d3fa35a2e47f1896b319ff2bbab074fb1d3c50a4c8677af2c4940a36",
+          "candidate_field_digests": {
+            "rationale": "346ad7dde9c1c588260a407e8b2427a2f6e2c645e9cc2b778fa7e4f53bb24b11",
+            "source_edit": "4f23a8bc3154adb1a1fe930b13cc2ca427b3270b8fda39c60d99b4a06d91dcb7",
+            "regression_test": "0b5e785ab2ffe7dee6d3a9e7587a83d70aaf6931686401085429711a088838b3",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 333,
+            "source_edit": 775,
+            "regression_test": 609,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "291b307f-3501-48ab-9915-d9828ceeb414",
+          "boundary_id": "7a7d7578-d328-40b8-a273-19b8f8584a26",
+          "evidence_ids": [
+            "f2b78dc3-fb4d-4ee6-a6e3-1ac184554679",
+            "5a459027-d21a-44f8-8066-eb35dcc6debc",
+            "593f276f-ebc2-4b88-a310-bb083410b373",
+            "28188347-f988-4dc0-b0c6-224a87bd7ef1",
+            "5db7bdcd-3928-4a5e-ab95-a53494b54d0f"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "compile",
+          "failure_code": "compile_failed",
+          "message": "Patched Python source did not compile.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+            "exit_code": 1,
+            "timed_out": false,
+            "stdout": "*** Error compiling 'victims/clean_customer_support/agent.py'...\n  File \"victims/clean_customer_support/agent.py\", line 34\n    events[-1].context_flow = ContextFlow(\n                                         ^\nSyntaxError: '(' was never closed\n\n",
+            "stderr": "",
+            "workspace_id": "e4ee5a9b-17b5-4696-a7b0-4598df64665f"
+          },
+          "attempt": 3,
+          "created_at": "2026-09-28T07:18:20.351950Z"
+        },
+        "proof_id": null,
+        "workspace_id": "e4ee5a9b-17b5-4696-a7b0-4598df64665f",
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-b4903eda34f5cdad",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 2146,
+          "prompt_tokens": 3105,
+          "completion_tokens": 761,
+          "total_tokens": 3866
+        },
+        "started_at": "2026-09-28T07:18:12.991010Z",
+        "completed_at": "2026-09-28T07:18:20.431507Z",
+        "duration_seconds": 7.440587453995249
+      }
+    ],
+    "final_failure": {
+      "failure_id": "f0af8d70-24c0-4fd9-9ed3-2f959534d0e4",
+      "repair_id": "2f68e218-70ab-443e-9bda-48fe15c2f52d",
+      "candidate_id": "249833fd-0c9a-4aa9-96d9-8345ecf681c6",
+      "candidate_digest": "b70df798d3fa35a2e47f1896b319ff2bbab074fb1d3c50a4c8677af2c4940a36",
+      "candidate_field_digests": {
+        "rationale": "346ad7dde9c1c588260a407e8b2427a2f6e2c645e9cc2b778fa7e4f53bb24b11",
+        "source_edit": "4f23a8bc3154adb1a1fe930b13cc2ca427b3270b8fda39c60d99b4a06d91dcb7",
+        "regression_test": "0b5e785ab2ffe7dee6d3a9e7587a83d70aaf6931686401085429711a088838b3",
+        "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "candidate_field_lengths": {
+        "rationale": 333,
+        "source_edit": 775,
+        "regression_test": 609,
+        "optional_policy_artifact": 4
+      },
+      "trace_id": "291b307f-3501-48ab-9915-d9828ceeb414",
+      "boundary_id": "7a7d7578-d328-40b8-a273-19b8f8584a26",
+      "evidence_ids": [
+        "f2b78dc3-fb4d-4ee6-a6e3-1ac184554679",
+        "5a459027-d21a-44f8-8066-eb35dcc6debc",
+        "593f276f-ebc2-4b88-a310-bb083410b373",
+        "28188347-f988-4dc0-b0c6-224a87bd7ef1",
+        "5db7bdcd-3928-4a5e-ab95-a53494b54d0f"
+      ],
+      "provider": "nebius_token_factory",
+      "model": "Qwen/Qwen3.5-397B-A17B",
+      "target_path": "victims/clean_customer_support/agent.py",
+      "target_symbol": "CleanCustomerSupportAgent.chat",
+      "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+      "failure_type": "indirect_prompt_injection",
+      "failure_stage": "compile",
+      "failure_code": "compile_failed",
+      "message": "Patched Python source did not compile.",
+      "diagnostics": {
+        "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+        "exit_code": 1,
+        "timed_out": false,
+        "stdout": "*** Error compiling 'victims/clean_customer_support/agent.py'...\n  File \"victims/clean_customer_support/agent.py\", line 34\n    events[-1].context_flow = ContextFlow(\n                                         ^\nSyntaxError: '(' was never closed\n\n",
+        "stderr": "",
+        "workspace_id": "e4ee5a9b-17b5-4696-a7b0-4598df64665f"
+      },
+      "attempt": 3,
+      "created_at": "2026-09-28T07:18:20.351950Z"
+    },
+    "safe_failure_summary": "compile: Patched Python source did not compile.",
+    "started_at": "2026-09-28T07:17:36.095012Z",
+    "completed_at": "2026-09-28T07:18:20.451465Z",
+    "duration_seconds": 44.35644717900141,
+    "original_repository_unchanged": true
+  },
+  "result_digest": "306c965796ce22cc04e81449645faee01e2c3268d3e1c00c108e7c041fb3566d"
+}

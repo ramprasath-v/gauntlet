@@ -71,15 +71,16 @@ NVIDIA Nemotron model. M3.1 does not apply the proposal or emit a proof verdict.
 The model generates only rationale, one bounded structured source edit,
 ordered Python regression-test source lines, and an optional policy artifact.
 The edit identifies the authorized path and symbol, trusted source hash,
-one-based range within the supplied symbol, exact expected source lines, and
-every replacement line. Gauntlet owns
+one-based range within the supplied symbol, deletion count, and every
+replacement line. Gauntlet owns
 the repair UUID, trace/boundary/evidence IDs, provider/model identity, source
 hash, authorized target, failure type, validation, application, and
 verification. Candidate decoding checks only the exact fields, types, and size
 bounds, preserving malformed code as evidence. A deterministic validator then
-checks rationale, target authorization, source identity, range and expected
-lines, Python test syntax and structure, and the optional policy artifact in a
-fixed order. It splices only the model-provided replacement lines, derives the
+checks rationale, target authorization, source identity, and range before
+reading the selected original lines from trusted source. It then checks Python
+test syntax and structure and the optional policy artifact in a fixed order.
+It splices only the model-provided replacement lines, derives the
 unified diff mechanically, and joins regression lines with LF. Success produces a
 `RepairProposal` with trusted provenance; rejection produces a serializable
 `RepairFailure` with a safe diagnostic and content digests. Extra model fields
@@ -145,11 +146,11 @@ is claimed yet.
 
 M4.2.1 adds safe candidate retention when a run evidence path is supplied.
 Every successfully decoded candidate receives a separate
-`gauntlet.repair-candidate.v2` artifact containing its structured generated
+`gauntlet.repair-candidate.v3` artifact containing its structured generated
 fields exactly as decoded plus any mechanically derived diff and regression
 source, trusted run/attempt/provenance metadata, candidate and derived-artifact
-digests, and an independent integrity digest. Version-one candidate artifacts
-remain loadable. The corresponding attempt
+digests, and an independent integrity digest. Version-one and version-two
+candidate artifacts retain their original loaders and remain loadable. The corresponding attempt
 in `gauntlet.repair-run.v1` stores a relative, integrity-bound reference rather
 than duplicating generated content. Failed validation does not suppress the
 artifact and does not promote it to a proposal. Provider envelopes, headers,

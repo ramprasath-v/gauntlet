@@ -70,7 +70,6 @@ def structured_candidate(
             source_hash=context.source_hash,
             start_line=prefix - symbol_start + 1,
             delete_line_count=len(expected),
-            expected_original_lines=expected,
             replacement_lines=replacement,
         ),
         regression_test=StructuredRegressionTest(
@@ -314,7 +313,6 @@ async def test_canary_verifier_and_unauthorized_patch_controls_are_rejected():
         source_hash=context.source_hash,
         start_line=2,
         delete_line_count=0,
-        expected_original_lines=[],
         replacement_lines=["        marker = 'model-proposed'"],
     )
     regression = StructuredRegressionTest(

@@ -8,8 +8,12 @@ from pydantic import ValidationError
 from gauntlet.remediation.candidate_artifact import (
     CANDIDATE_ARTIFACT_SCHEMA_VERSION,
     LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+    STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+    LegacyGeneratedRepairCandidateV2,
     LegacyGeneratedRepairCandidate,
+    LegacyStructuredSourceEditV2,
     LegacyRepairCandidateArtifact,
+    RepairCandidateArtifactV2,
     _artifact_digest,
     _legacy_candidate_identity,
     candidate_identity,
@@ -35,7 +39,6 @@ def candidate() -> GeneratedRepairCandidate:
             source_hash="0" * 64,
             start_line=2,
             delete_line_count=1,
-            expected_original_lines=["        old_value = True"],
             replacement_lines=["        new_value = True"],
         ),
         regression_test=StructuredRegressionTest(lines=[
@@ -127,6 +130,52 @@ def test_version_one_candidate_artifact_still_loads(tmp_path):
 
     assert loaded.schema_version == LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION
     assert loaded.legacy_candidate() == legacy
+
+
+def test_version_two_candidate_artifact_still_loads_with_original_meaning(tmp_path):
+    legacy = LegacyGeneratedRepairCandidateV2(
+        rationale="Historical structured rationale.",
+        source_edit=LegacyStructuredSourceEditV2(
+            target_path=TARGET,
+            target_symbol="CustomerSupportAgent.chat",
+            source_hash="0" * 64,
+            start_line=2,
+            delete_line_count=1,
+            expected_original_lines=["        old_value = True"],
+            replacement_lines=["        new_value = True"],
+        ),
+        regression_test=StructuredRegressionTest(
+            lines=["def test_v2():", "    assert True"]
+        ),
+    )
+    candidate_digest, field_digests = _legacy_candidate_identity(legacy)
+    values = dict(
+        schema_version=STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION,
+        candidate_id=str(uuid4()), run_id=str(uuid4()), attempt_number=1,
+        provider="legacy-v2", model="legacy-v2",
+        created_at=datetime.now(timezone.utc), trace_id="trace",
+        boundary_id="boundary", evidence_ids=["evidence"], target_path=TARGET,
+        target_symbol="CustomerSupportAgent.chat", source_hash="0" * 64,
+        rationale=legacy.rationale, source_edit=legacy.source_edit,
+        regression_test=legacy.regression_test, optional_policy_artifact=None,
+        derived_patch=None, derived_regression_test=None,
+        derived_patch_digest=None, derived_regression_test_digest=None,
+        candidate_digest=candidate_digest, candidate_field_digests=field_digests,
+    )
+    provisional = RepairCandidateArtifactV2.model_construct(
+        **values, integrity_digest="0" * 64
+    )
+    artifact = RepairCandidateArtifactV2(
+        **values, integrity_digest=_artifact_digest(provisional)
+    )
+    path = tmp_path / "structured-v2.json"
+    path.write_text(artifact.model_dump_json(indent=2) + "\n")
+
+    loaded = load_candidate_artifact(path)
+
+    assert loaded.schema_version == STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION
+    assert loaded.candidate_v2() == legacy
+    assert loaded.source_edit.expected_original_lines == ["        old_value = True"]
 
 
 def test_candidate_artifact_excludes_external_secrets_and_preserves_repository(

@@ -116,7 +116,6 @@ def valid_candidate(context, **changes):
             source_hash=context.source_hash,
             start_line=2,
             delete_line_count=0,
-            expected_original_lines=[],
             replacement_lines=["        # model-proposed boundary marker"],
         ),
         "regression_test": StructuredRegressionTest(lines=[
@@ -735,10 +734,12 @@ def test_prompt_uses_structured_lines_without_patch_or_multiline_test_strings():
         "rationale", "source_edit", "regression_test", "optional_policy_artifact",
     }
     assert "source_edit.start_line" in SYSTEM_PROMPT
-    assert "expected_original_lines" in SYSTEM_PROMPT
+    assert "expected_original_lines" not in SYSTEM_PROMPT
     assert "replacement_lines" in SYSTEM_PROMPT
     assert "regression_test.lines" in SYSTEM_PROMPT
     assert '"patch"' not in SYSTEM_PROMPT
+    edit_schema = schema["$defs"]["StructuredSourceEdit"]
+    assert "expected_original_lines" not in edit_schema["properties"]
     for forbidden in (
         "victims/clean_customer_support", "CleanCustomerSupportAgent",
         "This product is excellent", "Kestrel-7749",

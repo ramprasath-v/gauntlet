@@ -1,0 +1,272 @@
+{
+  "schema_version": "gauntlet.repair-run.v1",
+  "result": {
+    "status": "FAILED",
+    "run_id": "26d05862-ea27-467b-bd38-2f5aaecff6cb",
+    "trace_id": "6898de4f-d8b2-46cf-8e48-359f99af90f7",
+    "boundary_id": "8acc31c9-300e-4c0c-9d0a-a49b895cf3e6",
+    "evidence_ids": [
+      "c989da8b-0fc5-41c8-8caa-453c639fb8ca",
+      "c083749d-6b79-4f94-9c5f-f7948b6fa8c9",
+      "2f3a6e6b-c062-4fa4-a8b9-b7f8920f708d",
+      "0f05d02d-78e8-4652-9512-06dfd26582ea",
+      "6fc95beb-a104-413d-b329-9c6b1876f7e4"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "Qwen/Qwen3.5-397B-A17B",
+    "total_attempts": 3,
+    "attempts": [
+      {
+        "attempt": 1,
+        "candidate_id": "d29a2c01-379e-415a-b915-44d45cd8cef5",
+        "previous_failure_id": null,
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "1a28be96e0ecc60a00e97494282c8011b1566861d06d9424fdde961fd31d84b1",
+        "candidate_field_digests": {},
+        "candidate_field_lengths": {},
+        "candidate_artifact": null,
+        "provider_call": "PASS",
+        "candidate_decode": "FAIL",
+        "candidate_validation": "NOT_RUN",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "eb9a9e25-59aa-4c3d-9f29-c02148f527b3",
+          "repair_id": null,
+          "candidate_id": "d29a2c01-379e-415a-b915-44d45cd8cef5",
+          "candidate_digest": "1a28be96e0ecc60a00e97494282c8011b1566861d06d9424fdde961fd31d84b1",
+          "candidate_field_digests": {},
+          "candidate_field_lengths": {},
+          "trace_id": "6898de4f-d8b2-46cf-8e48-359f99af90f7",
+          "boundary_id": "8acc31c9-300e-4c0c-9d0a-a49b895cf3e6",
+          "evidence_ids": [
+            "c989da8b-0fc5-41c8-8caa-453c639fb8ca",
+            "c083749d-6b79-4f94-9c5f-f7948b6fa8c9",
+            "2f3a6e6b-c062-4fa4-a8b9-b7f8920f708d",
+            "0f05d02d-78e8-4652-9512-06dfd26582ea",
+            "6fc95beb-a104-413d-b329-9c6b1876f7e4"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "candidate_decode_failed",
+          "message": "Provider content did not decode as a repair candidate.",
+          "diagnostics": {
+            "error_type": "ValidationError",
+            "detail": "1 validation error for GeneratedRepairCandidate\nsource_edit\n  Value error, expected_original_lines length must equal delete_line_count [type=value_error]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error"
+          },
+          "attempt": 1,
+          "created_at": "2026-09-28T06:55:18.012595Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-8e42372773dae307",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 7676,
+          "prompt_tokens": 2497,
+          "completion_tokens": 2209,
+          "total_tokens": 4706
+        },
+        "started_at": "2026-09-28T06:54:56.582520Z",
+        "completed_at": "2026-09-28T06:55:18.013069Z",
+        "duration_seconds": 21.43055507799727
+      },
+      {
+        "attempt": 2,
+        "candidate_id": "03141fc0-6265-4fb9-8d72-932bc7d9affe",
+        "previous_failure_id": "eb9a9e25-59aa-4c3d-9f29-c02148f527b3",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "c1f80014175a64b3ad012bd469499b61f3dce2d52e0ca6c117c1fb33f7458008",
+        "candidate_field_digests": {
+          "rationale": "13c85ed49d68e312e62605bd48238cd23378add0b3f9b7b7d7053fbc5fd23dec",
+          "source_edit": "436da570f0d0089fcafb2f9e56999e409b5c842fb70ed830866b811ab800188e",
+          "regression_test": "dd385014bf0cf8f9d0749ef81be474c3f8e7bbb90c44238731e8f5e37d82e5bb",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 330,
+          "source_edit": 877,
+          "regression_test": 899,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v2",
+          "candidate_id": "03141fc0-6265-4fb9-8d72-932bc7d9affe",
+          "attempt_number": 2,
+          "path": "structured-live-m4-20260928T065456Z.candidates/attempt-02-03141fc0-6265-4fb9-8d72-932bc7d9affe.json",
+          "candidate_digest": "c1f80014175a64b3ad012bd469499b61f3dce2d52e0ca6c117c1fb33f7458008",
+          "integrity_digest": "e2a1d1a31311bdeb9580d56e692a3ee45919ddc58cdf06027b762145bee1114b"
+        },
+        "provider_call": "PASS",
+        "candidate_decode": "PASS",
+        "candidate_validation": "FAIL",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "1a4fd746-b8a6-4e61-ba29-1d4845ca6e7f",
+          "repair_id": null,
+          "candidate_id": "03141fc0-6265-4fb9-8d72-932bc7d9affe",
+          "candidate_digest": "c1f80014175a64b3ad012bd469499b61f3dce2d52e0ca6c117c1fb33f7458008",
+          "candidate_field_digests": {
+            "rationale": "13c85ed49d68e312e62605bd48238cd23378add0b3f9b7b7d7053fbc5fd23dec",
+            "source_edit": "32f2e9df39820b0fcbee2bba573db971eb55899af76ddd66dcd8dff23b51cfc8",
+            "regression_test": "072d5c9cff34a703124ae10c5b726d6394826845b149d277360519bf05e9fc4b",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 330,
+            "source_edit": 877,
+            "regression_test": 899,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "6898de4f-d8b2-46cf-8e48-359f99af90f7",
+          "boundary_id": "8acc31c9-300e-4c0c-9d0a-a49b895cf3e6",
+          "evidence_ids": [
+            "c989da8b-0fc5-41c8-8caa-453c639fb8ca",
+            "c083749d-6b79-4f94-9c5f-f7948b6fa8c9",
+            "2f3a6e6b-c062-4fa4-a8b9-b7f8920f708d",
+            "0f05d02d-78e8-4652-9512-06dfd26582ea",
+            "6fc95beb-a104-413d-b329-9c6b1876f7e4"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "source_identity",
+          "failure_code": "expected_original_lines_mismatch",
+          "message": "Structured edit does not match the selected source slice.",
+          "diagnostics": {
+            "start_line": 19,
+            "expected_line_count": 4,
+            "observed_line_count": 4
+          },
+          "attempt": 2,
+          "created_at": "2026-09-28T06:55:29.034542Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-b4a067228550595e",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 2449,
+          "prompt_tokens": 2920,
+          "completion_tokens": 1103,
+          "total_tokens": 4023
+        },
+        "started_at": "2026-09-28T06:55:18.057393Z",
+        "completed_at": "2026-09-28T06:55:29.042761Z",
+        "duration_seconds": 10.985404719991493
+      },
+      {
+        "attempt": 3,
+        "candidate_id": "24733395-4106-4db4-aa69-e205cc4d4e73",
+        "previous_failure_id": "1a4fd746-b8a6-4e61-ba29-1d4845ca6e7f",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "candidate_field_digests": {},
+        "candidate_field_lengths": {},
+        "candidate_artifact": null,
+        "provider_call": "FAIL",
+        "candidate_decode": "NOT_RUN",
+        "candidate_validation": "NOT_RUN",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "3aa4a2a2-fe35-4db8-a752-51200134589a",
+          "repair_id": null,
+          "candidate_id": "24733395-4106-4db4-aa69-e205cc4d4e73",
+          "candidate_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "candidate_field_digests": {},
+          "candidate_field_lengths": {},
+          "trace_id": "6898de4f-d8b2-46cf-8e48-359f99af90f7",
+          "boundary_id": "8acc31c9-300e-4c0c-9d0a-a49b895cf3e6",
+          "evidence_ids": [
+            "c989da8b-0fc5-41c8-8caa-453c639fb8ca",
+            "c083749d-6b79-4f94-9c5f-f7948b6fa8c9",
+            "2f3a6e6b-c062-4fa4-a8b9-b7f8920f708d",
+            "0f05d02d-78e8-4652-9512-06dfd26582ea",
+            "6fc95beb-a104-413d-b329-9c6b1876f7e4"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "provider_call_failed",
+          "message": "The remediation provider call failed safely.",
+          "diagnostics": {
+            "error_type": "NebiusCompletionError",
+            "detail": "Nebius completion LENGTH_TERMINATED_WITHOUT_CONTENT: {\"choice_count\": 1, \"completion_tokens\": 4096, \"content_length\": null, \"content_type\": \"null\", \"finish_reason\": \"length\", \"http_status\": 200, \"message_field_types\": {\"annotations\": \"null\", \"audio\": \"null\", \"content\": \"null\", \"function_call\": \"null\", \"reasoning\": \"str\", \"refusal\": \"null\", \"role\": \"str\", \"tool_calls\": \"list\"}, \"message_role\": \"assistant\", \"object_type\": \"chat.completion\", \"prompt_tokens\": 3390, \"reasoning_content_present\": false, \"reasoning_content_type\": null, \"reasoning_present\": true, \"reasoning_type\": \"str\", \"refusal_present\": true, \"refusal_type\": \"null\", \"response_id\": \"chatcmpl-b29f486819b74051\", \"returned_model\": \"Qwen/Qwen3.5-397B-A17B\", \"selected_choice_index\": 0, \"tool_calls_count\": 0, \"tool_calls_present\": true, \"total_tokens\": 7486}"
+          },
+          "attempt": 3,
+          "created_at": "2026-09-28T06:56:02.798516Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "provider_completion": null,
+        "started_at": "2026-09-28T06:55:29.089744Z",
+        "completed_at": "2026-09-28T06:56:02.798594Z",
+        "duration_seconds": 33.720149534987286
+      }
+    ],
+    "final_failure": {
+      "failure_id": "3aa4a2a2-fe35-4db8-a752-51200134589a",
+      "repair_id": null,
+      "candidate_id": "24733395-4106-4db4-aa69-e205cc4d4e73",
+      "candidate_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "candidate_field_digests": {},
+      "candidate_field_lengths": {},
+      "trace_id": "6898de4f-d8b2-46cf-8e48-359f99af90f7",
+      "boundary_id": "8acc31c9-300e-4c0c-9d0a-a49b895cf3e6",
+      "evidence_ids": [
+        "c989da8b-0fc5-41c8-8caa-453c639fb8ca",
+        "c083749d-6b79-4f94-9c5f-f7948b6fa8c9",
+        "2f3a6e6b-c062-4fa4-a8b9-b7f8920f708d",
+        "0f05d02d-78e8-4652-9512-06dfd26582ea",
+        "6fc95beb-a104-413d-b329-9c6b1876f7e4"
+      ],
+      "provider": "nebius_token_factory",
+      "model": "Qwen/Qwen3.5-397B-A17B",
+      "target_path": "victims/clean_customer_support/agent.py",
+      "target_symbol": "CleanCustomerSupportAgent.chat",
+      "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+      "failure_type": "indirect_prompt_injection",
+      "failure_stage": "candidate_validation",
+      "failure_code": "provider_call_failed",
+      "message": "The remediation provider call failed safely.",
+      "diagnostics": {
+        "error_type": "NebiusCompletionError",
+        "detail": "Nebius completion LENGTH_TERMINATED_WITHOUT_CONTENT: {\"choice_count\": 1, \"completion_tokens\": 4096, \"content_length\": null, \"content_type\": \"null\", \"finish_reason\": \"length\", \"http_status\": 200, \"message_field_types\": {\"annotations\": \"null\", \"audio\": \"null\", \"content\": \"null\", \"function_call\": \"null\", \"reasoning\": \"str\", \"refusal\": \"null\", \"role\": \"str\", \"tool_calls\": \"list\"}, \"message_role\": \"assistant\", \"object_type\": \"chat.completion\", \"prompt_tokens\": 3390, \"reasoning_content_present\": false, \"reasoning_content_type\": null, \"reasoning_present\": true, \"reasoning_type\": \"str\", \"refusal_present\": true, \"refusal_type\": \"null\", \"response_id\": \"chatcmpl-b29f486819b74051\", \"returned_model\": \"Qwen/Qwen3.5-397B-A17B\", \"selected_choice_index\": 0, \"tool_calls_count\": 0, \"tool_calls_present\": true, \"total_tokens\": 7486}"
+      },
+      "attempt": 3,
+      "created_at": "2026-09-28T06:56:02.798516Z"
+    },
+    "safe_failure_summary": "candidate_validation: The remediation provider call failed safely.",
+    "started_at": "2026-09-28T06:54:56.562924Z",
+    "completed_at": "2026-09-28T06:56:02.848652Z",
+    "duration_seconds": 66.29703309699835,
+    "original_repository_unchanged": true
+  },
+  "result_digest": "aecf66df578257bcf025e2a27bff71c54ef79e3a5da6a79612ae7c11d8e70d06"
+}

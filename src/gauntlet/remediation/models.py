@@ -104,20 +104,15 @@ class StructuredSourceEdit(StrictModel):
     source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     start_line: int = Field(ge=1, le=100_000)
     delete_line_count: int = Field(ge=0, le=MAX_EDIT_LINES)
-    expected_original_lines: list[str] = Field(max_length=MAX_EDIT_LINES)
     replacement_lines: list[str] = Field(max_length=MAX_EDIT_LINES)
 
-    @field_validator("expected_original_lines", "replacement_lines")
+    @field_validator("replacement_lines")
     @classmethod
     def valid_lines(cls, value: list[str]) -> list[str]:
         return _validate_source_lines(value)
 
     @model_validator(mode="after")
     def coherent_range(self) -> "StructuredSourceEdit":
-        if len(self.expected_original_lines) != self.delete_line_count:
-            raise ValueError(
-                "expected_original_lines length must equal delete_line_count"
-            )
         if self.delete_line_count == 0 and not self.replacement_lines:
             raise ValueError("structured source edit must insert, replace, or delete")
         return self

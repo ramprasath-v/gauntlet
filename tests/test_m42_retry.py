@@ -149,7 +149,6 @@ def edit_for_changed_source(request, changed: str) -> StructuredSourceEdit:
         source_hash=request.repair_context.source_hash,
         start_line=prefix - symbol_start + 1,
         delete_line_count=original_end - prefix,
-        expected_original_lines=original_lines[prefix:original_end],
         replacement_lines=changed_lines[prefix:changed_end],
     )
 

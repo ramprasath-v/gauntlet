@@ -21,19 +21,21 @@ identified untrusted-tool-data boundary generally. Propose the smallest
 reasonable repair as one contiguous structured source edit and generate an
 actual Python regression test demonstrating the security property.
 Keep the entire response concise and below 2,000 output tokens. Limit rationale
-to 100 words, source_edit to at most 120 expected original lines and 120
-replacement lines, regression_test to 40 lines, and optional_policy_artifact
+to 100 words, source_edit to at most 120 replacement lines, regression_test to 40 lines,
+and optional_policy_artifact
 to 80 words or null. Do not copy the complete target file. Do not add unused
 imports, broad test scaffolding, dependency inventories, or unrelated helpers.
 `source_edit.start_line` is one-based relative to the first line of the supplied
 `source_context.source_text`, which is exactly the authorized target symbol.
 Set target_path, target_symbol, and source_hash exactly from the supplied
-context. `delete_line_count` must equal the number of
-`expected_original_lines`. Those expected lines must exactly match the selected
-source slice. Put every proposed replacement source line, with its exact
-indentation and no line terminator, in `replacement_lines`. Use an empty list
-only when deleting source. Gauntlet will only join these explicit lines and
-mechanically derive a unified diff; it will not complete or repair the edit.
+context. Choose `start_line` and `delete_line_count` exactly; Gauntlet will not
+infer or correct the requested range. Put every proposed replacement source
+line, with its exact indentation and no line terminator, in
+`replacement_lines`. Use an empty list only when deleting source. After
+authorization, hash, and range validation, Gauntlet will read the original
+lines for that exact range from its trusted source, join only the explicit
+replacement lines, and mechanically derive a unified diff. It will not
+complete or repair the edit.
 The `regression_test.lines` array must contain complete, executable,
 pytest-compatible Python 3 source, one physical source line per array element
 without line terminators. Every import must be syntactically valid. Use only

@@ -1796,3 +1796,143 @@ complete offline suite was
 `479f47757ec0e06af30efd95beb40af1383e00fbb7bdc0c7bea2f278c61950c3`.
 The generated patches never touched the real repository. The complete suite
 passed 149 tests with zero failures.
+
+## Structured-edit live M4 experiment
+
+Date: 2026-09-28 UTC. One production `M42RepairOrchestrator` run used the clean
+synthetic benchmark, Nebius Token Factory, and
+`Qwen/Qwen3.5-397B-A17B`. This was the first live M4 run using the v2 bounded
+`source_edit` and regression line-array contract. Before remediation, P100
+again produced `CANARY_LEAKED`; the legitimate P200 baseline returned both
+expected review details. The preflight focused suite passed 40 tests, the full
+suite passed 163 tests, the production schema contained no model-generated
+unified-diff field, and test-only known-good repair material was absent from the
+provider prompt.
+
+The existing three-attempt retry bound was exhausted. The run terminated
+`FAILED` after 66.297033 seconds, and no second workflow was started.
+
+- Attempt 1: HTTP 200; 21.430555 seconds; 2,497 prompt tokens and 2,209
+  completion tokens; `finish_reason=stop`. Strict JSON decoding reached the v2
+  candidate schema, which rejected the response because
+  `expected_original_lines` length did not equal `delete_line_count`. No
+  candidate artifact or derived artifact was created.
+- Attempt 2: HTTP 200; 10.985405 seconds; 2,920 prompt tokens and 1,103
+  completion tokens; `finish_reason=stop`. A structured candidate decoded and
+  was persisted as `gauntlet.repair-candidate.v2`. Trusted-source validation
+  rejected it at `source_identity / expected_original_lines_mismatch`: the
+  four model-supplied expected lines did not exactly match the requested
+  authorized source slice beginning at relative line 19. The candidate
+  proposed escaping quotes and replacing newlines in the review while keeping
+  it interpolated into the privileged system prompt. Because source identity
+  failed, Gauntlet correctly produced neither a derived diff nor materialized
+  regression source and did not reinterpret or repair the model edit.
+- Attempt 3: HTTP 200; 33.720150 seconds; 3,390 prompt tokens and the 4,096-token
+  limit; `finish_reason=length`. The successful response envelope contained
+  null message content. The client classified this as
+  `LENGTH_TERMINATED_WITHOUT_CONTENT`; no candidate was constructed.
+
+No candidate reached patch authorization, sandbox application, compilation,
+generated regression execution, patched P100, patched P200, compatibility, or
+PatchProof. The exact rejecting gate was candidate-schema validation on attempt
+1, trusted expected-source matching on attempt 2, and provider completion
+content validation on attempt 3. Gauntlet did not manufacture a diff from the
+invalid source edit.
+
+Run ID: `26d05862-ea27-467b-bd38-2f5aaecff6cb`. Integrity-checked run evidence:
+`artifacts/structured-live-m4-20260928T065456Z.json`. The attempt-2 structured
+candidate is retained at
+`artifacts/structured-live-m4-20260928T065456Z.candidates/attempt-02-03141fc0-6265-4fb9-8d72-932bc7d9affe.json`.
+The run linkage, v2 candidate digest, field digests, and artifact integrity
+digest validate. Derived patch and regression digests are absent by design
+because trusted-source validation failed before mechanical serialization. Six
+previously persisted v1 candidate artifacts still load successfully.
+
+The repository input digest before and after the live workflow was
+`3eb5944dcbea961017e0ef5161ca088bfc6246458804fe897d4c5c15285c2f07`.
+No patch was applied and no repair workspace reached execution. The failure is
+preserved as evidence without weakening or bypassing any downstream gate. The
+complete post-run repository suite passed 163 tests with zero failures, and
+the repository input digest remained unchanged.
+
+## Offline structured-edit contract refactor
+
+Date: 2026-09-28 UTC. No provider request was made. The first structured live
+M4 run showed that requiring the model to reproduce trusted original source
+lines prevented otherwise decoded candidates from reaching mechanical
+serialization. That transcription was removed from the current model contract:
+`StructuredSourceEdit` now contains the path, symbol, source hash, relative
+start line, deletion count, and exact replacement lines, but no
+`expected_original_lines` field.
+
+The deterministic validator still checks the claimed path and symbol, claimed
+source hash, current trusted source hash, and complete containment of the exact
+model-selected range inside the authorized symbol. Only after those gates pass
+does it use the corresponding original slice from the trusted source. It does
+not infer or correct the range and still splices the model replacement lines
+without formatting, normalization, completion, or semantic repair. Invalid
+syntax reaches compilation unchanged; ineffective and destructive repairs
+continue to reach and fail the existing P100, P200, or compatibility gates.
+
+New candidate evidence uses `gauntlet.repair-candidate.v3`. Reusing v2 would
+have silently changed the meaning of historical evidence, so v1 and v2 retain
+dedicated schema-specific loaders and their original digest validation. All six
+persisted v1 candidates, the structured live run's v2 candidate, and all
+persisted run envelopes load successfully after the change.
+
+Focused structured-edit, evidence, remediation, retry, and clean-benchmark
+verification passed 104 tests. The complete offline suite passed 167 tests with
+zero failures. `git diff --check` passed. No benchmark-specific repair, known-
+good patch, semantic rewriting, downstream gate change, or live request was
+introduced.
+
+## Structured-edit v3 live M4 experiment
+
+Date: 2026-09-28 UTC. One production `M42RepairOrchestrator` workflow used the
+clean synthetic benchmark, Nebius Token Factory, and
+`Qwen/Qwen3.5-397B-A17B`. Preflight confirmed
+`gauntlet.repair-candidate.v3`, absence of `expected_original_lines` from the
+provider schema and prompt, no test-only repair content in the production
+provider path, 104 focused tests passing, and 167 complete-suite tests passing.
+
+The unchanged three-attempt policy was exhausted. The workflow terminated
+`FAILED` after 44.356447 seconds. No second workflow or manual retry was run.
+
+- Attempt 1: HTTP 200; 8.318059 seconds; 2,463 prompt tokens and 925 completion
+  tokens; `finish_reason=stop`. A v3 candidate decoded. Path, symbol, source
+  hash, and the exact relative range `start_line=17`, `delete_line_count=7`
+  validated. Gauntlet derived seven trusted original lines and mechanically
+  materialized the exact replacement and regression line arrays. Compilation
+  failed because the model-selected range removed part of a `ContextFlow`
+  expression, leaving an unclosed parenthesis. P100, P200, compatibility, and
+  PatchProof did not run.
+- Attempt 2: HTTP 200; 28.474663 seconds; 3,414 prompt tokens and the 4,096-token
+  limit; `finish_reason=length`. Message content was null and the client
+  classified it as `LENGTH_TERMINATED_WITHOUT_CONTENT`. No candidate decoded.
+- Attempt 3: HTTP 200; 7.440587 seconds; 3,105 prompt tokens and 761 completion
+  tokens; `finish_reason=stop`. A v3 candidate decoded. Path, symbol, source
+  hash, and the exact relative range `start_line=18`, `delete_line_count=4`
+  validated. Gauntlet derived four trusted original lines and mechanically
+  materialized the exact replacement and regression line arrays. Compilation
+  again failed because the model-selected range removed an interior portion of
+  the same `ContextFlow` expression, leaving an unclosed parenthesis. P100,
+  P200, compatibility, and PatchProof did not run.
+
+Independent evidence inspection reconstructed both patches from the trusted
+source and exact model-selected ranges. Both reconstructed patches match the
+persisted derived patches byte for byte, and joining each model regression line
+array matches its persisted derived regression source byte for byte. Run
+integrity, v3 candidate and field digests, derived patch and regression digests,
+and run-to-candidate linkage pass. Six v1 artifacts and one historical v2
+artifact still load with their original schema-specific validation.
+
+Run ID: `46f6a85b-db5e-4f20-8936-36c1927b3460`. Run evidence:
+`artifacts/structured-live-m4-20260928T071736Z.json`. The attempt-1 and attempt-3
+v3 candidates are retained under
+`artifacts/structured-live-m4-20260928T071736Z.candidates/`.
+
+The repository input digest remained
+`ad40a205cf145d768e9ab3ba3eb152383fe1535c52bedd10348b7457606c717d`.
+The complete post-run suite passed 167 tests with zero failures. No model range,
+replacement source, or regression source was corrected, and no implementation
+or security gate was changed after observing the result.
