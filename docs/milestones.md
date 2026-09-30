@@ -30,7 +30,8 @@ customer-support, and personalization semantics.
 | M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
 | M7.5 — Generic Repair Handoff | COMPLETE (OFFLINE) | Convert a violated contract into a reusable repair request and independently re-evaluate the contract after exact sandbox application. |
 | M7.6 — Live P300 Repair Proof | COMPLETE — NOT_VERIFIED | Run one controlled live P300 repair experiment and preserve its deterministic rejection evidence. |
-| M7.7 — NVIDIA Nemotron Adversarial Generation | OFFLINE COMPLETE — LIVE PENDING | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
+| M7.7 — NVIDIA Nemotron Adversarial Generation | LIVE INTEGRATION OBSERVED; RETRY PENDING | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
+| M7.7.1 — Canonical Scenario Contract + Failure Evidence | COMPLETE | Align generated capability arguments with deterministic adapters and retain provider output through downstream failure. |
 | M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
@@ -143,6 +144,32 @@ The prepared live experiment requests five scenarios in one structured-output
 call to Nebius Token Factory using `nvidia/nemotron-3-super-120b-a12b`, the
 documented us-central1 endpoint, `/no_think`, and a 2,048 completion-token cap.
 No live request was made in the offline milestone. M8 has not started.
+
+### M7.7.1 — Canonical Scenario Contract + Failure Evidence
+
+Status: COMPLETE; ONE CONTROLLED LIVE RETRY PENDING EXPLICIT AUTHORIZATION.
+
+The first M7.7 request reached Nebius Token Factory and returned five scenarios
+that passed the generic structured model. Local execution then stopped at the
+P300 parameter boundary because the original generic schema accepted any JSON
+object while the adapter required exactly `order_id`, `amount_minor`, and
+`approval_timing`. The lost scenario contents cannot be reconstructed and are
+not represented as known evidence.
+
+M7.7.1 defines a property-neutral execution contract for capability arguments.
+The same declaration now shapes the provider JSON schema, while P300 retains
+ownership of its parameter types and meanings. A separate compatibility gate
+records missing, unsupported, and invalid parameters before the synthetic agent
+can run. It never infers arguments from model-authored prose.
+
+`gauntlet.adversarial-generation.v2` retains the structured provider output,
+response metadata, content digest, schema result, per-scenario compatibility
+and execution state, deterministic verdicts when reached, exact failure stage,
+repository integrity, credential scan, and final status. Mixed batches are
+graded per scenario: compatible scenarios execute, while incompatible ones are
+retained as `NOT_REACHED`. A provider response therefore remains evidence even
+when no scenario is executable. No live request was made for M7.7.1, and M8 has
+not started.
 
 ### M8 — Product Demo Flow
 

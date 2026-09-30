@@ -7,7 +7,7 @@ from pydantic import Field
 
 from gauntlet.adversarial.models import (
     AdversarialGenerationRequest,
-    GeneratedScenarioBatch,
+    generated_scenario_batch_schema,
 )
 from gauntlet.llm.nebius import (
     NEMOTRON_REASONING_DISABLED,
@@ -39,7 +39,7 @@ def build_adversarial_messages(
     request: AdversarialGenerationRequest,
 ) -> list[dict[str, str]]:
     payload = request.model_dump(mode="json")
-    payload["required_output_schema"] = GeneratedScenarioBatch.model_json_schema()
+    payload["required_output_schema"] = generated_scenario_batch_schema(request)
     return [
         {"role": "system", "content": ADVERSARIAL_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
@@ -72,7 +72,7 @@ def build_nemotron_adversarial_preflight(
         endpoint=NEMOTRON_ADVERSARIAL_BASE_URL,
         system_prompt=ADVERSARIAL_SYSTEM_PROMPT,
         output_schema_name=ADVERSARIAL_SCHEMA_NAME,
-        output_schema=GeneratedScenarioBatch.model_json_schema(),
+        output_schema=generated_scenario_batch_schema(request),
         requested_scenario_count=request.constraints.scenario_count,
         transmitted_context=request.model_dump(mode="json"),
         reasoning_control=NEMOTRON_REASONING_DISABLED,
@@ -96,7 +96,7 @@ class NebiusNemotronAdversarialProvider:
     ) -> str:
         return await self.client.complete(
             build_adversarial_messages(request),
-            response_schema=GeneratedScenarioBatch.model_json_schema(),
+            response_schema=generated_scenario_batch_schema(request),
             schema_name=ADVERSARIAL_SCHEMA_NAME,
             reasoning_directive=NEMOTRON_REASONING_DISABLED,
             max_tokens=ADVERSARIAL_MAX_TOKENS,

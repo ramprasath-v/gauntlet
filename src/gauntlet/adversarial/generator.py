@@ -28,10 +28,16 @@ class AdversarialScenarioGenerator:
         self, request: AdversarialGenerationRequest,
     ) -> list[AdversarialScenario]:
         raw = await self.provider.generate_scenarios(request)
+        return self.parse(request, raw)
+
+    def parse(
+        self, request: AdversarialGenerationRequest, raw: str, *,
+        run_id: str | None = None,
+    ) -> list[AdversarialScenario]:
         batch = GeneratedScenarioBatch.model_validate_json(raw)
         if len(batch.scenarios) != request.constraints.scenario_count:
             raise ValueError("provider returned the wrong adversarial scenario count")
-        run_id = str(uuid4())
+        run_id = run_id or str(uuid4())
         generated = []
         for candidate in batch.scenarios:
             if len(candidate.input) > request.constraints.max_input_characters:

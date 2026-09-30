@@ -1974,3 +1974,33 @@ evidence, `PRE_PATCH_ATTACK_REPRODUCED`, `POST_PATCH_ATTACK_BLOCKED`, cleanup,
 and repository immutability. It does not alter the frozen M4 assessment or any
 P100, P200, compatibility, or generated-regression result. Evaluation of the
 retained Kimi attempt-3 patch remains a separately authorized next step.
+
+## M7.7 live attempt 1 and M7.7.1 integration hardening
+
+Date: 2026-09-29. One provider request was made during the separately authorized
+M7.7 experiment; no provider request was made during M7.7.1.
+
+Nebius Token Factory returned HTTP 200 from
+`nvidia/nemotron-3-super-120b-a12b` with finish reason `stop`. The request took
+approximately 7.69 seconds end to end and reported 796 prompt tokens, 1,474
+completion tokens, and 2,270 total tokens. Five scenarios passed the generic
+structured-output model. Deterministic execution then stopped at the local P300
+parameter contract before the contract evaluator ran.
+
+This is classified as Gauntlet integration friction, not a provider failure.
+The original generic schema allowed `parameters` to be any JSON object, while
+the P300 adapter required a specific flat capability argument shape. The exact
+missing, extra, or invalid fields from attempt 1 are unknown because the process
+retained neither the successful provider content nor a failure artifact. The
+five scenario contents are not reconstructed or inferred.
+
+M7.7.1 establishes a canonical, property-neutral capability parameter contract
+used by the generated JSON schema and a distinct adapter compatibility gate.
+P300 validates its required keys, types, allowed values, and unsupported keys
+without parsing scenario prose or inventing values. Evidence version
+`gauntlet.adversarial-generation.v2` now integrity-binds provider metadata and
+structured output before recording per-scenario compatibility, execution, and
+contract-evaluation outcomes. Schema rejection and downstream incompatibility
+both produce evidence; mixed batches retain and execute each compatible
+scenario independently. A future retry remains a separately authorized single
+request using the same endpoint, model, `/no_think`, and five-scenario limit.
