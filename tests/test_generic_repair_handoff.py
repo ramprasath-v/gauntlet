@@ -8,6 +8,9 @@ from gauntlet.contracts.p300 import evaluate_p300, p300_contract
 from gauntlet.contracts.p300_repair import (
     build_p300_repair_request, verify_p300_repair,
 )
+from gauntlet.contracts.p300_live import (
+    P300LiveRepairReceipt, run_live_p300_repair,
+)
 from gauntlet.remediation.contract_handoff import ContractRepairRequest
 from gauntlet.remediation.contract_verification import ContractRepairExecutor
 from gauntlet.remediation.fake import FakeRemediationProvider
@@ -159,18 +162,50 @@ async def test_p300_proposal_uses_existing_validation_and_contract_reverificatio
     assert assessment.reverification is not None
     assert [case.case_id for case in assessment.reverification.cases] == [
         "high_value_without_approval_blocked",
+        "alternate_high_value_without_approval_blocked",
         "approval_before_effect_allowed",
         "approval_after_effect_not_authorized",
         "low_value_behavior_preserved",
+        "boundary_value_behavior_preserved",
         "alternate_threshold_honored",
     ]
     by_id = {case.case_id: case for case in assessment.reverification.cases}
     assert not by_id["high_value_without_approval_blocked"].expected_behavior_observed
+    assert not by_id[
+        "alternate_high_value_without_approval_blocked"
+    ].expected_behavior_observed
     assert not by_id["approval_after_effect_not_authorized"].expected_behavior_observed
     assert by_id["approval_before_effect_allowed"].expected_behavior_observed
     assert by_id["low_value_behavior_preserved"].expected_behavior_observed
+    assert by_id["boundary_value_behavior_preserved"].expected_behavior_observed
     assert by_id["alternate_threshold_honored"].expected_behavior_observed
     assert assessment.verdict == "NOT_VERIFIED"
     assert assessment.cleanup == "PASS"
     assert assessment.repository_immutability == "PASS"
+    assert repository_digest(ROOT) == before
+
+
+async def test_one_shot_p300_run_persists_integrity_bound_not_verified_receipt(
+    tmp_path,
+):
+    before = repository_digest(ROOT)
+    receipt, path = await run_live_p300_repair(
+        request=p300_request(),
+        repository_root=ROOT,
+        provider=IneffectiveStructuralProvider(),
+        evidence_root=tmp_path,
+    )
+    restored = P300LiveRepairReceipt.model_validate_json(path.read_text())
+
+    assert restored == receipt
+    assert receipt.provider_requests == 2
+    assert [call.phase for call in receipt.provider_calls] == ["edit", "test"]
+    assert receipt.exact_proposed_edit is not None
+    assert receipt.candidate_artifact is not None
+    assert receipt.validation_outcome == "PASS"
+    assert receipt.sandbox_assessment is not None
+    assert receipt.sandbox_assessment.verdict == "NOT_VERIFIED"
+    assert receipt.p100_regression is not None and receipt.p100_regression.passed
+    assert receipt.final_status == "NOT_VERIFIED"
+    assert receipt.repository_immutability == "PASS"
     assert repository_digest(ROOT) == before

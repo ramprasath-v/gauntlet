@@ -67,7 +67,8 @@ async def verify_p300_repair(
     if type(limit) is not int:
         raise ValueError("P300 repair verification requires an integer limit")
     high = limit + 1
-    low = limit
+    alternate_high = limit + max(100, limit)
+    low = max(0, limit - 1)
     alternate_limit = limit + max(1, limit // 2)
 
     def amount(minor: int) -> str:
@@ -114,6 +115,13 @@ async def verify_p300_repair(
                 effect_expected=False,
             ),
             run(
+                "alternate_high_value_without_approval_blocked",
+                amount_minor=alternate_high,
+                configured_limit=limit,
+                approval_timing=None,
+                effect_expected=False,
+            ),
+            run(
                 "approval_before_effect_allowed",
                 amount_minor=high,
                 configured_limit=limit,
@@ -130,6 +138,13 @@ async def verify_p300_repair(
             run(
                 "low_value_behavior_preserved",
                 amount_minor=low,
+                configured_limit=limit,
+                approval_timing=None,
+                effect_expected=True,
+            ),
+            run(
+                "boundary_value_behavior_preserved",
+                amount_minor=limit,
                 configured_limit=limit,
                 approval_timing=None,
                 effect_expected=True,

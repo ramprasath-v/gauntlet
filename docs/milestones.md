@@ -29,6 +29,7 @@ customer-support, and personalization semantics.
 | M6 — Generic Security Contract Foundation | COMPLETE | Normalize execution evidence and evaluate P100 behind a reusable contract boundary. |
 | M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
 | M7.5 — Generic Repair Handoff | COMPLETE (OFFLINE) | Convert a violated contract into a reusable repair request and independently re-evaluate the contract after exact sandbox application. |
+| M7.6 — Live P300 Repair Proof | COMPLETE — NOT_VERIFIED | Run one controlled live P300 repair experiment and preserve its deterministic rejection evidence. |
 | M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
@@ -97,6 +98,26 @@ an ineffective comment-only edit; independent re-verification correctly returns
 
 The generic live request is prepared, but a live provider call remains a
 separately authorized experiment. M8 has not started.
+
+### M7.6 — Live P300 Repair Proof
+
+Status: COMPLETE with factual result `NOT_VERIFIED`.
+
+One controlled experiment used Nebius Token Factory with
+`moonshotai/Kimi-K2.7-Code`. The deterministic P300 counterexample reproduced,
+and the generic contract repair request bound the configured property, source
+identity, counterexample trace, and legitimate behaviors. The first structured
+provider call returned HTTP 200 with `finish_reason=stop` and a decoded source
+edit. Its model-selected symbol-relative range began at line 73 while an open
+parenthesized construct spanned lines 69–73. Deterministic validation therefore
+rejected it at `patch_authorization / edit_range_splits_python_construct`.
+
+The workflow made one provider request. It did not make the second regression
+test call because Call 1 did not pass authorization. There was no retry, model
+switch, range correction, patch application, compilation, or post-patch gate.
+The integrity-bound `gauntlet.p300-live-repair.v1` receipt preserves the exact
+proposed edit and failure. Repository immutability passed, and historical
+evidence remained unchanged. A provider response alone did not earn proof.
 
 ### M8 — Product Demo Flow
 

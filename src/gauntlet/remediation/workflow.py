@@ -56,13 +56,15 @@ async def generate_contract_repair_proposal(
     request: ContractRepairRequest,
     repository_root: Path,
     provider: RemediationProvider,
+    *,
+    capture: dict[str, object] | None = None,
 ) -> RepairProposal | RepairFailure:
     """Generate a proposal from a generic contract violation without legacy traces."""
     remediation_request = to_remediation_request(
         request, provider=provider.provider_name, model=provider.model_name
     )
     return await generate_repair_proposal_from_request(
-        remediation_request, repository_root, provider
+        remediation_request, repository_root, provider, capture=capture
     )
 
 
@@ -70,6 +72,8 @@ async def generate_repair_proposal_from_request(
     request: RemediationRequest,
     repository_root: Path,
     provider: RemediationProvider,
+    *,
+    capture: dict[str, object] | None = None,
 ) -> RepairProposal | RepairFailure:
     """Shared proposal path for legacy P100 and generic contract handoffs."""
     source = request.source_context
@@ -78,19 +82,38 @@ async def generate_repair_proposal_from_request(
     before = target.read_bytes()
     edit_raw = await provider.generate_edit(request)
     edit_candidate = parse_generated_edit_candidate(edit_raw)
+    if capture is not None:
+        capture["edit_candidate"] = edit_candidate
     materialized: dict[str, str] = {}
     derived = validate_source_edit(
         edit_candidate, repair_context, repository_root,
         materialized_output=materialized,
     )
     if isinstance(derived, RepairFailure):
+        if capture is not None:
+            capture["validation_result"] = derived
         if target.read_bytes() != before:
             raise RuntimeError("remediation provider flow modified repository source")
         return derived
+    if capture is not None:
+        capture["derived_patch"] = derived
+        capture["trusted_original_lines"] = materialized.get(
+            "trusted_original_lines", []
+        )
     test_raw = await provider.generate_test(request, derived_patch=derived)
     test_candidate = parse_generated_test_candidate(test_raw)
+    if capture is not None:
+        capture["test_candidate"] = test_candidate
     combined = combine_repair_candidate(edit_candidate, test_candidate)
-    result = validate_candidate(combined, repair_context, repository_root)
+    if capture is not None:
+        capture["combined_candidate"] = combined
+    result = validate_candidate(
+        combined, repair_context, repository_root,
+        materialized_output=materialized,
+    )
     if target.read_bytes() != before:
         raise RuntimeError("remediation provider flow modified repository source")
+    if capture is not None:
+        capture["validation_result"] = result
+        capture.update(materialized)
     return result
