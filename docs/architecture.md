@@ -373,3 +373,17 @@ and shows both the retained trace ID and the reconstruction trace ID. Repair
 views preserve distinct meanings: P100's security repair is independently
 `VERIFIED`, while P300 remains `NOT_VERIFIED` after deterministic source-boundary
 rejection. Presentation-only capability classification stays in the demo layer.
+M8.1 adds a scenario-selection layer without introducing a second adversarial
+generation pipeline. The P300 live route constructs the configured P300
+contract and delegates directly to `run_p300_adversarial_generation`; its one
+provider call, strict schema handling, adapter compatibility, deterministic
+execution, evidence integrity, and repository digest checks therefore remain
+the M7.7 implementation. The web adapter only maps the resulting evidence into
+the console view.
+
+The P100 panel reads the frozen patch and mutation assessments locally and is
+labeled `Run Verified P100`. The Personalization panel is metadata-only and
+cannot execute. Replay re-evaluates retained canonical P300 scenarios under
+the selected threshold without provider access. Live and replay both render
+the same contract-owned verdict shape, while mode labels and evidence paths
+make their provenance distinct.

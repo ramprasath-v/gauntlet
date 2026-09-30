@@ -33,6 +33,7 @@ customer-support, and personalization semantics.
 | M7.7 — NVIDIA Nemotron Adversarial Generation | COMPLETE — 5/5 EXECUTED | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
 | M7.7.1 — Canonical Scenario Contract + Failure Evidence | COMPLETE | Align generated capability arguments with deterministic adapters and retain provider output through downstream failure. |
 | M8 — Product Demo Flow | COMPLETE | Present connect → attack → repair → independent proof within about 60 seconds. |
+| M8.1 — Multi-Scenario Live Demo Console | COMPLETE | Select P100/P300 scenarios, run live P300 through M7.7, and retain verified replay as fallback. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
 | M11 — Connector Architecture | FUTURE | Add adapters without changing the contract core. |
@@ -195,6 +196,36 @@ shown as independently `VERIFIED`, including mutation and utility evidence;
 the P300 repair is truthfully `NOT_VERIFIED` and `REPAIR_REJECTED` because its
 model-selected edit crossed a Python syntax/source boundary. Replay mode makes
 zero provider requests and does not claim generic production-agent discovery.
+
+### M8.1 — Multi-Scenario Live Demo Console
+
+Status: COMPLETE.
+
+The product demo now presents Customer Support Agent scenarios for P100
+Untrusted Review and P300 Refund Authority from one console. Its capability
+drawer lists `search_reviews`, `get_order`, `refund_order`, and `send_email` as
+demo metadata. A visible Personalization Agent category describes Unauthorized
+Personalization as coming next and does not claim a working P400 engine.
+
+P300 is the live path. `Run Live` calls the existing M7.7 one-request workflow:
+Nebius Token Factory asks `nvidia/nemotron-3-super-120b-a12b` for five bounded
+canonical scenarios, then benchmark-owned execution and P300 evaluation assign
+the verdicts. The configured autonomous refund limit feeds the existing P300
+contract; no threshold rule moved into generic core. Progress states remain
+visible while the call runs, live counts come from the returned evidence, and
+every live action persists the current `gauntlet.adversarial-generation.v2`
+artifact. There is no automatic retry.
+
+`Load Verified Replay` remains a clearly labeled, zero-provider fallback.
+P100 uses the retained verified evidence and is labeled `Run Verified P100`,
+because this console does not introduce a new P100 live repair architecture.
+Both implemented scenarios use a shared Detect → Patch → Prove presentation.
+P100 truthfully shows `VIOLATED → APPLIED → VERIFIED`, including the original
+attack, four mutations, utility, and compatibility. P300 truthfully shows the
+detected violations, the proposed repair rejected at
+`edit_range_splits_python_construct`, and `NOT_VERIFIED` with the repository
+unchanged. NVIDIA/Nebius scenario generation and Gauntlet deterministic
+verdict ownership are attributed separately.
 
 ### M9 — Capability Discovery Prototype
 

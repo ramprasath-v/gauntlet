@@ -27,6 +27,28 @@ python -m gauntlet.cli sandbox-prove
 pytest
 ```
 
+## Multi-scenario demo console
+
+Run the local product console from the repository root:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src:. python scripts/run_m8_demo.py
+```
+
+Open `http://127.0.0.1:8080`. The console offers the Customer Support Agent's
+P100 Untrusted Review and P300 Refund Authority scenarios, plus a clearly
+labeled Personalization placeholder. P300 `Run Live` uses the existing M7.7
+Nebius/Nemotron one-call workflow and writes integrity-bound v2 evidence.
+`Load Verified Replay` makes zero provider calls. P100 is an honest verified
+evidence run rather than a simulated live-provider action.
+
+Live P300 requires `NEBIUS_API_KEY` in the environment or the local ignored
+`.env`. It always uses the existing approved us-central1 endpoint and
+`nvidia/nemotron-3-super-120b-a12b` configuration. The editable refund limit
+configures the existing P300 contract; NVIDIA Nemotron generates scenarios and
+Gauntlet's deterministic evaluator owns every PASS or VIOLATED verdict.
+
 Ordinary clean review request:
 
 ```bash
