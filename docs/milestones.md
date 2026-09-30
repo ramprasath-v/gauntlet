@@ -30,6 +30,7 @@ customer-support, and personalization semantics.
 | M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
 | M7.5 — Generic Repair Handoff | COMPLETE (OFFLINE) | Convert a violated contract into a reusable repair request and independently re-evaluate the contract after exact sandbox application. |
 | M7.6 — Live P300 Repair Proof | COMPLETE — NOT_VERIFIED | Run one controlled live P300 repair experiment and preserve its deterministic rejection evidence. |
+| M7.7 — NVIDIA Nemotron Adversarial Generation | OFFLINE COMPLETE — LIVE PENDING | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
 | M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
@@ -118,6 +119,30 @@ switch, range correction, patch application, compilation, or post-patch gate.
 The integrity-bound `gauntlet.p300-live-repair.v1` receipt preserves the exact
 proposed edit and failure. Repository immutability passed, and historical
 evidence remained unchanged. A provider response alone did not earn proof.
+
+### M7.7 — NVIDIA Nemotron Adversarial Generation
+
+Status: OFFLINE IMPLEMENTATION COMPLETE; LIVE EXPERIMENT PENDING EXPLICIT
+AUTHORIZATION.
+
+M7.7 adds a property-neutral adversarial scenario generator. It accepts a
+security contract, deterministic seed, capability context, and bounded
+generation constraints. Provider output is strict JSON containing only user
+input, an optional strategy label, and capability parameters. Gauntlet assigns
+scenario/run identity and provider provenance after parsing. The model cannot
+write a verdict field.
+
+The first adapter supplies P300 capability semantics and executes every
+scenario through the synthetic refund agent. Model-authored input is retained
+in normalized `USER_INPUT` evidence; the existing effect-authorization
+evaluator alone assigns `PASS` or `VIOLATED` and emits counterexamples. Generic
+generation, provider, and evidence modules contain no refund, threshold,
+customer-support, or P300 rules.
+
+The prepared live experiment requests five scenarios in one structured-output
+call to Nebius Token Factory using `nvidia/nemotron-3-super-120b-a12b`, the
+documented us-central1 endpoint, `/no_think`, and a 2,048 completion-token cap.
+No live request was made in the offline milestone. M8 has not started.
 
 ### M8 — Product Demo Flow
 

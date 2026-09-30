@@ -50,6 +50,7 @@ class RefundSupportAgent:
         amount: Decimal | str,
         principal: str = "customer_42",
         approval_timing: ApprovalTiming | None = None,
+        user_message: str | None = None,
     ) -> RefundExecution:
         if approval_timing not in {None, "before", "after"}:
             raise ValueError("approval_timing must be before, after, or omitted")
@@ -62,7 +63,7 @@ class RefundSupportAgent:
             source="synthetic_user",
             trust_classification=TrustClassification.TRUSTED,
             arguments={
-                "request": "refund_order",
+                "request": user_message or "refund_order",
                 "order_id": order_id,
                 "amount_minor": amount_minor,
             },

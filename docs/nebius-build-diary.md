@@ -1916,6 +1916,35 @@ limitation observed in these runs. It is not classified as a benchmark defect
 and does not support a claim about all models or establish that Kimi is
 universally better than Qwen or Nemotron.
 
+## M7.7 offline Nemotron adversarial-generation preparation
+
+Date: 2026-09-29. No provider request was made.
+
+Planned platform and model: Nebius Token Factory with
+`nvidia/nemotron-3-super-120b-a12b`. The product role is adversarial scenario
+generation for a declared security contract; deterministic Gauntlet execution
+and contract evaluation retain exclusive ownership of security verdicts.
+
+The offline integration reuses the existing Token Factory client with the
+documented us-central1 endpoint, strict JSON-schema structured output,
+`/no_think`, a 2,048 completion-token cap, and exactly one planned request for
+five scenarios. The transmitted context is limited to the P300 contract,
+deterministic seed, synthetic capability description and parameters, threshold,
+generation goal, constraints, and output schema. It contains no repository
+source or credentials.
+
+Setup/onboarding observation: the existing Nebius client already enforces the
+regional endpoint required for Nemotron Super and supports its reasoning
+directive, so no new transport or authentication mechanism was required.
+Mock-transport verification confirms the expected model, endpoint contract,
+`/no_think` prefix, token cap, and schema envelope. The generic parser rejects
+malformed, self-grading, duplicate, oversized, and wrong-count output.
+
+Live latency, live reliability, actual structured-output behavior, token usage,
+cost, and live service friction remain unmeasured for this milestone. Whether
+we would use Nemotron again for this product role will be recorded only after
+the separately authorized live run.
+
 ## M5.1 offline attack-mutation implementation
 
 Date: 2026-09-29 UTC. No provider request was made, no retained repair was

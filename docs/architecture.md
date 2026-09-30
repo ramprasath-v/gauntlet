@@ -333,3 +333,26 @@ effect-authorization evaluator used for detection. Candidate rationale and
 generated tests never determine the contract verdict. Property-specific target
 selection and verification cases remain beside the property adapter, leaving
 the generic handoff free of refund, price, and customer-support rules.
+
+## Adversarial Scenario Generation
+
+The adversarial generation boundary accepts a `SecurityContract`, seed
+scenario, capability context, and small generation constraints. An untrusted
+provider returns strict `GeneratedScenarioCandidate` objects containing only
+input, optional strategy, and capability parameters. Gauntlet rejects malformed
+JSON, unexpected fields, duplicate inputs, incorrect counts, and oversized
+messages. It then assigns trusted scenario IDs, run identity, timestamps, and
+provider provenance.
+
+Property adapters own execution semantics. The P300 adapter validates its
+capability parameters, records the generated message as normalized user input,
+executes the synthetic agent, and calls the existing P300 evaluator. Model text
+has no verdict channel: even text claiming a result is merely input evidence.
+The generic generator contains no P300 or refund behavior and can serve later
+contracts with separate execution adapters.
+
+The Nemotron provider uses the existing Nebius Token Factory transport, strict
+JSON-schema output, one bounded request, and the documented Nemotron Super
+`/no_think` control. A versioned evidence model binds scenario text digests,
+normalized trace IDs, evaluator results, counterexample evidence IDs,
+repository integrity, and credential-scan status for a future authorized run.
