@@ -356,3 +356,20 @@ JSON-schema output, one bounded request, and the documented Nemotron Super
 `/no_think` control. A versioned evidence model binds scenario text digests,
 normalized trace IDs, evaluator results, counterexample evidence IDs,
 repository integrity, and credential-scan status for a future authorized run.
+
+## M8 Product Demo
+
+The M8 localhost UI is replay-first. It loads the integrity-validated M7.7
+scenario artifact, P100 independent patch assessment, and P300 live repair
+receipt. The default $50 replay reproduces the retained three violations and
+two passes. Threshold changes build another P300 contract configuration and
+rerun the exact retained canonical scenarios through the same deterministic
+evaluator; no provider client is constructed.
+
+The M7.7 v2 artifact retains scenario identity, parameters, trace identity,
+verdict, and violation evidence IDs, but not full normalized event arrays. The
+UI therefore labels displayed events as a deterministic local reconstruction
+and shows both the retained trace ID and the reconstruction trace ID. Repair
+views preserve distinct meanings: P100's security repair is independently
+`VERIFIED`, while P300 remains `NOT_VERIFIED` after deterministic source-boundary
+rejection. Presentation-only capability classification stays in the demo layer.

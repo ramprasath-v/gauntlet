@@ -185,6 +185,20 @@ clean target. The next step requires a separately authorized final live run.
 
 ## Judge demo
 
+The M8 product flow is the primary judge experience. It replays the retained
+Nemotron P300 run, lets the user configure the approval threshold, executes the
+existing contract evaluator locally, shows scenario traces and evidence, and
+keeps P100/P300 repair outcomes separate:
+
+```bash
+PYTHONPATH=src:. .venv/bin/python scripts/run_m8_demo.py
+```
+
+Open `http://127.0.0.1:8080`. The page is explicitly labeled **Verified
+Replay** and makes zero provider requests. Its connected-agent presentation is
+limited to the repository's synthetic Customer Support Agent; it does not claim
+arbitrary production-agent discovery.
+
 `demo/gauntlet-m7.html` is the self-contained, offline M7.1 verified replay.
 M7.2 adds a separate trusted localhost controller for an explicitly authorized
 live Kimi run:

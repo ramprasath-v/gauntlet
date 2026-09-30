@@ -30,9 +30,9 @@ customer-support, and personalization semantics.
 | M7 — P300 Effect Authorization | COMPLETE (OFFLINE CONTRACT PROOF) | Require configured approval for sensitive effects such as refunds over a configurable limit. |
 | M7.5 — Generic Repair Handoff | COMPLETE (OFFLINE) | Convert a violated contract into a reusable repair request and independently re-evaluate the contract after exact sandbox application. |
 | M7.6 — Live P300 Repair Proof | COMPLETE — NOT_VERIFIED | Run one controlled live P300 repair experiment and preserve its deterministic rejection evidence. |
-| M7.7 — NVIDIA Nemotron Adversarial Generation | LIVE INTEGRATION OBSERVED; RETRY PENDING | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
+| M7.7 — NVIDIA Nemotron Adversarial Generation | COMPLETE — 5/5 EXECUTED | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
 | M7.7.1 — Canonical Scenario Contract + Failure Evidence | COMPLETE | Align generated capability arguments with deterministic adapters and retain provider output through downstream failure. |
-| M8 — Product Demo Flow | **NEXT — NOT STARTED** | Present connect → attack → repair → independent proof within about 60 seconds. |
+| M8 — Product Demo Flow | COMPLETE | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
 | M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
 | M11 — Connector Architecture | FUTURE | Add adapters without changing the contract core. |
@@ -168,17 +168,33 @@ and execution state, deterministic verdicts when reached, exact failure stage,
 repository integrity, credential scan, and final status. Mixed batches are
 graded per scenario: compatible scenarios execute, while incompatible ones are
 retained as `NOT_REACHED`. A provider response therefore remains evidence even
-when no scenario is executable. No live request was made for M7.7.1, and M8 has
-not started.
+when no scenario is executable. No live request was made for M7.7.1.
 
 ### M8 — Product Demo Flow
 
-Build the judge-facing flow: connect the demo agent, show capabilities, ask one
-targeted security question, run Gauntlet, show the exact violation path, propose
-and apply a repair, and independently verify the original attack, mutations,
-and utility. The UI may say `FIX IT`, but evidence must keep proposal,
-application, and verification separate. A new developer should understand the
-value within approximately 60 seconds.
+Status: COMPLETE.
+
+The replay-first product UI presents the synthetic Customer Support Agent as a
+clearly labeled connected demo agent, shows its `refund_order` external-effect
+capability, and asks one business question: the amount above which approval is
+required. The default $50 threshold creates the existing P300 contract. A
+changed threshold creates a new configuration of the same contract and reruns
+the five retained scenarios through the benchmark-owned evaluator locally.
+
+The default verified replay loads the integrity-checked M7.7 evidence and shows
+the factual 3 `VIOLATED` / 2 `PASS` result. Scenario details expose a simple
+execution path, retained trace and evidence identities, and expandable
+normalized events reconstructed deterministically from each retained canonical
+scenario. The UI labels this reconstruction rather than claiming the M7.7 v2
+artifact retained its original event arrays.
+
+Attribution separates NVIDIA Nemotron 3 Super 120B via Nebius Token Factory,
+which generated scenarios, from the Gauntlet deterministic evaluator, which
+owns security verdicts. Repair remains secondary: the P100 security repair is
+shown as independently `VERIFIED`, including mutation and utility evidence;
+the P300 repair is truthfully `NOT_VERIFIED` and `REPAIR_REJECTED` because its
+model-selected edit crossed a Python syntax/source boundary. Replay mode makes
+zero provider requests and does not claim generic production-agent discovery.
 
 ### M9 — Capability Discovery Prototype
 
