@@ -1,6 +1,8 @@
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
+import pytest
 
 from gauntlet.adversarial.fake import FakeAdversarialScenarioProvider
 from gauntlet.adversarial.models import (
@@ -13,6 +15,7 @@ from gauntlet.demo.m8 import (
     load_m8_replay,
     p100_demo_view,
 )
+import gauntlet.demo.m8 as m8_module
 from gauntlet.demo.m8_web import create_m8_demo_app
 from gauntlet.llm.nebius import NebiusTokenFactoryClient
 
@@ -278,6 +281,7 @@ async def test_p100_verified_path_is_honest_and_provider_free(monkeypatch):
     assert data["mutation_variants"] == "4/4 BLOCKED"
     assert data["legitimate_behavior"] == "PASS"
     assert data["provider_requests"] == 0
+    assert data["historical_live_provider_requests"] == 1
     assert calls == []
 
 
@@ -288,6 +292,101 @@ def test_p100_view_preserves_detect_patch_prove_evidence():
     assert data["patch"] == "APPLIED_IN_SANDBOX"
     assert data["prove"] == "VERIFIED"
     assert data["repository_immutability"] == "PASS"
+
+
+def test_p100_live_detection_and_rejected_candidate_are_explicit():
+    data = p100_demo_view(ROOT)
+    attack, candidate, rejection = data["stages"][:3]
+
+    assert attack["stage"] == "ATTACK"
+    assert attack["status"] == "CANARY_LEAKED"
+    assert attack["execution_mode"] == "LIVE"
+    assert candidate["status"] == "CANDIDATE RECEIVED"
+    assert candidate["execution_mode"] == "LIVE"
+    assert data["live_candidate_schema_decode"] == "PASS"
+    assert data["live_candidate_validation"] == "FAIL"
+    assert rejection["status"] == "REJECTED BY SECURITY CONTRACT"
+    assert rejection["details"]["failure_code"] == (
+        "edit_range_splits_compound_statement"
+    )
+    assert "ended inside an if statement" in rejection["details"]["summary"]
+    assert "did not expand or repair" in rejection["details"]["summary"]
+
+
+async def test_p100_rejection_reason_survives_api_serialization():
+    response = await get(create_m8_demo_app(ROOT), "/api/p100")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["live_rejection_stage"] == "patch_authorization"
+    assert data["live_rejection_code"] == "edit_range_splits_compound_statement"
+    assert "will not adjust" in data["live_rejection_reason"]
+    assert data["live_final_verdict"] == "NOT_VERIFIED"
+
+
+def test_p100_verified_patch_and_proof_are_replay_only():
+    data = p100_demo_view(ROOT)
+    replay = [stage for stage in data["stages"] if stage["execution_mode"] == "VERIFIED_REPLAY"]
+
+    assert replay
+    assert replay[0]["status"] == "VERIFIED PATCH — REPLAY"
+    assert "did not come from the current live candidate" in (
+        replay[0]["details"]["summary"]
+    )
+    assert data["patch_provenance"] == "VERIFIED_REPLAY"
+    assert data["patch_diff"].startswith("--- a/victims/customer_support/agent.py")
+    assert all(stage["execution_mode"] != "LIVE" for stage in replay)
+    assert any(stage["stage"] == "RE-ATTACK" and stage["status"] == "BLOCKED" for stage in replay)
+    assert any(stage["stage"] == "UTILITY" and stage["status"] == "PRESERVED" for stage in replay)
+    assert any(stage["stage"] == "COMPATIBILITY" and stage["status"] == "21/21 PASS" for stage in replay)
+    assert any(stage["stage"] == "MUTATIONS" and stage["status"] == "4/4 BLOCKED" for stage in replay)
+
+
+def test_p100_evidence_references_keep_live_and_replay_distinct():
+    evidence = p100_demo_view(ROOT)["evidence"]
+
+    live = [item for item in evidence if item["execution_mode"] == "LIVE"]
+    replay = [item for item in evidence if item["execution_mode"] == "VERIFIED_REPLAY"]
+    assert len(live) == 3
+    assert len(replay) == 5
+    assert {item["path"] for item in live}.isdisjoint(
+        item["path"] for item in replay
+    )
+
+
+def test_p100_missing_live_evidence_fails_closed(monkeypatch):
+    monkeypatch.setattr(
+        m8_module, "P100_LIVE_RECEIPT_PATH", Path("evidence/missing-live.json")
+    )
+
+    with pytest.raises(ValueError, match="missing"):
+        p100_demo_view(ROOT)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("target_path", "victims/customer_support/other.py"),
+    ("source_hash", "0" * 64),
+])
+def test_p100_mismatched_replay_target_or_source_fails_closed(
+    monkeypatch, field, value,
+):
+    original = m8_module.load_demo_evidence
+
+    def mismatched(root):
+        return replace(original(root), **{field: value})
+
+    monkeypatch.setattr(m8_module, "load_demo_evidence", mismatched)
+    with pytest.raises(ValueError, match="(frozen rejected run|mismatches replay)"):
+        p100_demo_view(ROOT)
+
+
+async def test_p100_page_labels_live_rejection_and_verified_replay():
+    page = (await get(create_m8_demo_app(ROOT), "/")).text
+
+    assert "REJECTED BY SECURITY CONTRACT" in page
+    assert "VERIFIED PATCH — REPLAY" in page
+    assert "Live and replay provenance remain separate" in page
+    assert "Actual retained verified patch" in page
 
 
 async def test_p300_never_renders_rejected_repair_as_verified():

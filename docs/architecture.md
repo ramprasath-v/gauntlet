@@ -381,9 +381,20 @@ execution, evidence integrity, and repository digest checks therefore remain
 the M7.7 implementation. The web adapter only maps the resulting evidence into
 the console view.
 
-The P100 panel reads the frozen patch and mutation assessments locally and is
-labeled `Run Verified P100`. The Personalization panel is metadata-only and
-cannot execute. Replay re-evaluates retained canonical P300 scenarios under
-the selected threshold without provider access. Live and replay both render
-the same contract-owned verdict shape, while mode labels and evidence paths
-make their provenance distinct.
+The P100 panel composes two explicitly separate evidence sources. Its `LIVE`
+stages load the measured attack and Kimi candidate receipt: the canary leaked,
+the candidate decoded, and deterministic authorization rejected its range at
+`patch_authorization / edit_range_splits_compound_statement`. Its
+`VERIFIED_REPLAY` stages load the frozen candidate, patch assessment,
+reevaluation manifest, and mutation assessment. The console displays the
+canonical retained diff and the independent P100, P200, 21/21 compatibility,
+and 4/4 mutation results. The integration makes zero provider calls and cannot
+represent replay proof as output from the measured live candidate.
+
+The composition fails closed. The live receipt, provider-output sidecar,
+timing sidecar, current authorized source, and replay target/source identity
+must agree, and all referenced artifacts must pass their existing integrity
+checks. Missing, malformed, stale, or mismatched evidence produces no P100
+view. The Personalization panel remains metadata-only and cannot execute.
+P300 replay still re-evaluates retained canonical scenarios under the selected
+threshold without provider access.

@@ -217,15 +217,22 @@ every live action persists the current `gauntlet.adversarial-generation.v2`
 artifact. There is no automatic retry.
 
 `Load Verified Replay` remains a clearly labeled, zero-provider fallback.
-P100 uses the retained verified evidence and is labeled `Run Verified P100`,
-because this console does not introduce a new P100 live repair architecture.
-Both implemented scenarios use a shared Detect → Patch → Prove presentation.
-P100 truthfully shows `VIOLATED → APPLIED → VERIFIED`, including the original
-attack, four mutations, utility, and compatibility. P300 truthfully shows the
-detected violations, the proposed repair rejected at
-`edit_range_splits_python_construct`, and `NOT_VERIFIED` with the repository
-unchanged. NVIDIA/Nebius scenario generation and Gauntlet deterministic
-verdict ownership are attributed separately.
+P100 now presents the measured live Detect and repair-validation evidence
+before transitioning to independently verified replay evidence. The live
+attack reproduced `CANARY_LEAKED`; the Kimi candidate decoded, then failed
+closed at `patch_authorization / edit_range_splits_compound_statement` and is
+shown as `REJECTED BY SECURITY CONTRACT`. The console never applies or repairs
+that candidate.
+
+The next stage is explicitly `VERIFIED PATCH — REPLAY`. It displays the exact
+canonical retained diff and its independently verified P100 block, P200
+preservation, 21/21 compatibility, and 4/4 mutation results. Structured
+`LIVE` and `VERIFIED_REPLAY` provenance, evidence paths, and file digests keep
+the two candidates and their outcomes distinct. Missing or mismatched evidence
+fails closed. This P100 integration makes zero provider calls and does not
+change historical evidence. P300 continues to show its own rejected repair
+and `NOT_VERIFIED` result with NVIDIA/Nebius generation attributed separately
+from Gauntlet's deterministic verdicts.
 
 ### M9 — Capability Discovery Prototype
 
