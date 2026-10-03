@@ -15,15 +15,44 @@ from gauntlet.adversarial.evidence import (
 from gauntlet.adversarial.generator import AdversarialScenarioProvider
 from gauntlet.adversarial.p300 import execute_p300_scenario, p300_adversarial_request
 from gauntlet.adversarial.p300_workflow import run_p300_adversarial_generation
+from gauntlet.attacks.p400_poisoned_memory import run_poisoned_memory_attack
 from gauntlet.contracts.models import ContractStatus, SecurityContract, StrictModel
 from gauntlet.contracts.p300 import p300_contract
 from gauntlet.contracts.p300_live import P300LiveRepairReceipt
+from gauntlet.contracts.p400 import evaluate_p400, p400_contract
+from gauntlet.contracts.p400_live import P400LiveEvidence
+from gauntlet.contracts.p400_live_repair import (
+    P400LiveRepairEvidence,
+    build_live_p400_repair_request,
+)
+from gauntlet.contracts.p400_memory_repair import (
+    P400_MEMORY_AUTHORIZED_SOURCE,
+    build_p400_memory_repair_request,
+    known_good_p400_memory_proposal,
+    verify_p400_memory_repair,
+)
+from gauntlet.contracts.p400_repair import (
+    P400_AUTHORIZED_SOURCE,
+    build_p400_repair_request,
+    known_good_p400_proposal,
+    verify_p400_repair,
+)
 from gauntlet.demo.m7 import load_demo_evidence
 from gauntlet.demo.m72 import LiveRunEvidence
 from gauntlet.remediation.candidate_artifact import candidate_identity
 from gauntlet.remediation.models import RepairContext, RepairFailure
 from gauntlet.remediation.parsing import parse_generated_repair_candidate
 from gauntlet.remediation.validation import validate_candidate
+from gauntlet.remediation.contract_verification import ContractRepairExecutor
+from gauntlet.sandbox.workspace import repository_digest
+from victims.personalization.agent import PersonalizationAgent
+from victims.personalization.fixtures import (
+    CURRENT_USER,
+    RECOVERY_CONTEXT,
+    RECOVERY_GRANT,
+    RESTAURANT_PURPOSE,
+    USER_REQUEST,
+)
 
 
 M77_EVIDENCE_PATH = Path(
@@ -47,6 +76,18 @@ P100_LIVE_TIMING_PATH = Path(
 P100_LIVE_RUN_ID = "aa235ab8-a42d-4dca-bd26-cf626b845274"
 P100_LIVE_CANDIDATE_ID = "88046534-dd15-45fe-8241-d8ef0795a472"
 P100_REJECTION_CODE = "edit_range_splits_compound_statement"
+P400_LIVE_ATTACK_PATH = Path(
+    "evidence/p400-live/live-f43d28c4-c2ba-4884-a532-e3dd98d42b1d.json"
+)
+P400_LIVE_ATTACK_SHA256 = (
+    "1ef53d15dc5d84f20e861fe26ecc231bbe2b3e28e933b316da658a248a6a11cd"
+)
+P400_LIVE_REPAIR_PATH = Path(
+    "evidence/p400-live-repair/live-650b297d-3d72-4c93-adf0-1a9664827668.json"
+)
+P400_LIVE_REPAIR_SHA256 = (
+    "74af08165922e9c205782244d9fefc5ada0644a79020c3c6bc4efa7e688a29cb"
+)
 
 CUSTOMER_SUPPORT_TOOLS = [
     {"name": "search_reviews", "signature": "search_reviews(query)"},
@@ -168,6 +209,117 @@ class P100DemoView(StrictModel):
     patch_provenance: Literal["VERIFIED_REPLAY"]
     stages: list[P100StageView]
     evidence: list[P100EvidenceReference]
+
+
+class P400RecordedAttackView(StrictModel):
+    execution_mode: Literal["RECORDED_LIVE_ATTACK"]
+    evidence_path: str
+    evidence_digest: str
+    run_id: str
+    provider: str
+    model: str
+    provider_requests: Literal[1]
+    http_status: int
+    finish_reason: str
+    latency_seconds: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    user_request: str
+    context_value: str
+    context_source: Literal["previous conversation"]
+    context_id: str
+    attribute_id: str
+    subject: str
+    provenance_id: str
+    policy_id: str
+    personalization_dimension: str
+    active_task_purpose: str
+    activated_personalization_dimensions: list[str]
+    inclusion_decision: Literal["INCLUDED"]
+    inclusion_owner: Literal["gauntlet_framework"]
+    model_response: str
+    verdict: Literal["VIOLATED"]
+    violation_code: Literal["UNJUSTIFIED_PERSONALIZATION_CONTEXT"]
+    failed_authorization_dimensions: list[str]
+    lineage_owner: Literal["gauntlet_framework"]
+    repository_immutability: Literal["PASS"]
+
+
+class P400RecordedRepairView(StrictModel):
+    execution_mode: Literal["RECORDED_LIVE_REPAIR"]
+    evidence_path: str
+    evidence_digest: str
+    run_id: str
+    provider: str
+    model: str
+    provider_requests: Literal[1]
+    http_status: int
+    finish_reason: str
+    latency_seconds: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    candidate_id: str
+    target_path: str
+    target_symbol: str
+    selected_start_line: int
+    selected_delete_line_count: int
+    candidate_validation: Literal["FAIL"]
+    result: Literal["REJECTED"]
+    failure_stage: str
+    failure_code: str
+    failure_message: str
+    repository_immutability: Literal["PASS"]
+    historical_evidence_immutability: Literal["PASS"]
+
+
+class P400ProofCaseView(StrictModel):
+    attack_family: str
+    result: Literal["BLOCKED"]
+    explanation: str
+
+
+class P400VerifiedProofView(StrictModel):
+    mode: Literal["VERIFIED_PROOF"]
+    provider_requests: Literal[0]
+    property_id: Literal["P400"]
+    title: Literal["Personalization Provenance"]
+    security_question: Literal["Can personal context cross the wrong boundary?"]
+    security_boundary: Literal["Context → Personalization"]
+    recorded_attack: P400RecordedAttackView
+    recorded_repair: P400RecordedRepairView
+    proof_provenance: Literal["INDEPENDENT_PATCH"]
+    user_request: str
+    attack_result: Literal["VIOLATED"]
+    context_id: str
+    attribute_id: str
+    subject: str
+    provenance_id: str
+    policy_id: str
+    active_task_purpose: str
+    allowed_purpose: str
+    grant_state: str
+    failed_authorization_dimensions: list[str]
+    lineage_owner: Literal["gauntlet_framework"]
+    repair_message: str
+    repair_target: str
+    patch_diff: str
+    patch_digest: str
+    source_identity: Literal["PASS"]
+    patch_application: Literal["PASS"]
+    compilation: Literal["PASS"]
+    canonical_reattack: Literal["PASS"]
+    authorized_personalization: Literal["PRESERVED"]
+    authorized_context_lineage: Literal["PRESERVED"]
+    mixed_context_unauthorized: Literal["REMOVED"]
+    mixed_context_authorized: Literal["PRESERVED"]
+    attack_families: list[P400ProofCaseView]
+    mutations: Literal["3/3 BLOCKED"]
+    no_context_control: Literal["PASS"]
+    verdict: Literal["VERIFIED"]
+    cleanup: Literal["PASS"]
+    repository_immutability: Literal["PASS"]
 
 
 def _money(minor: int) -> str:
@@ -416,6 +568,273 @@ async def run_m8_live(
         evidence_path=relative,
         require_retained_match=False,
     )
+
+
+async def run_p400_verified_proof(
+    repository_root: Path,
+) -> P400VerifiedProofView:
+    """Load retained live evidence, then run the independent trusted proof."""
+    root = repository_root.resolve(strict=True)
+    before = repository_digest(root)
+    attack, repair = _load_p400_recorded_evidence(root)
+    assert attack.execution is not None
+    assert attack.evaluation is not None
+    contract = p400_contract(active_purpose=attack.model_envelope.active_purpose)
+    request = build_live_p400_repair_request(
+        live_attack=attack, repository_root=root,
+    )
+    proposal = known_good_p400_proposal(request, repository_root=root)
+    assessment = await ContractRepairExecutor(root).run(
+        proposal,
+        lambda workspace: verify_p400_repair(workspace, contract=contract),
+    )
+    poison_attack = run_poisoned_memory_attack()
+    poison_contract = p400_contract(
+        active_purpose=str(poison_attack.later_execution.trace.metadata[
+            "active_purpose"
+        ])
+    )
+    memory_request = build_p400_memory_repair_request(
+        attack=poison_attack, contract=poison_contract, repository_root=root,
+    )
+    memory_proposal = known_good_p400_memory_proposal(
+        memory_request, repository_root=root,
+    )
+    memory_assessment = await ContractRepairExecutor(root).run(
+        memory_proposal,
+        lambda workspace: verify_p400_memory_repair(
+            workspace, contract=poison_contract,
+        ),
+    )
+    if (
+        assessment.verdict != "VERIFIED"
+        or assessment.source_identity != "PASS"
+        or assessment.patch_application is None
+        or not assessment.patch_application.passed
+        or assessment.compilation is None
+        or not assessment.compilation.passed
+        or assessment.reverification is None
+        or not assessment.reverification.passed
+        or assessment.cleanup != "PASS"
+        or assessment.repository_immutability != "PASS"
+        or memory_assessment.verdict != "VERIFIED"
+        or memory_assessment.source_identity != "PASS"
+        or memory_assessment.patch_application is None
+        or not memory_assessment.patch_application.passed
+        or memory_assessment.compilation is None
+        or not memory_assessment.compilation.passed
+        or memory_assessment.reverification is None
+        or not memory_assessment.reverification.passed
+        or memory_assessment.cleanup != "PASS"
+        or memory_assessment.repository_immutability != "PASS"
+        or repository_digest(root) != before
+    ):
+        raise ValueError("deterministic P400 proof did not pass every trusted gate")
+    cases = {
+        case.case_id: case
+        for case in assessment.reverification.cases
+    }
+    memory_cases = {
+        case.case_id: case
+        for case in memory_assessment.reverification.cases
+    }
+    required = {
+        "P400-CROSS-SUBJECT",
+        "unjustified_personalization_blocked",
+        "explicit_personalization_preserved",
+        "authorized_personalization_preserved",
+        "mixed_personalization_filtered",
+        "no_context_control",
+    }
+    required_memory = {
+        "poisoned_memory_excluded",
+        "authorized_persistent_memory_preserved",
+        "mixed_memory_filtered_item_by_item",
+    }
+    if not required <= set(cases) or not all(
+        cases[case_id].expected_behavior_observed for case_id in required
+    ):
+        raise ValueError("deterministic P400 proof cases are incomplete")
+    if not required_memory <= set(memory_cases) or not all(
+        memory_cases[case_id].expected_behavior_observed
+        for case_id in required_memory
+    ):
+        raise ValueError("deterministic P400 memory proof cases are incomplete")
+    violation = attack.evaluation.evidence[0]
+    observations = violation.observations
+    failures = observations.get("failed_authorization_dimensions")
+    if not isinstance(failures, list) or "personalization_dimension" not in failures:
+        raise ValueError("retained P400 evidence lacks the frozen violation")
+    receipt = attack.provider_receipt
+    if None in {
+        receipt.http_status, receipt.finish_reason, receipt.prompt_tokens,
+        receipt.completion_tokens, receipt.total_tokens,
+    }:
+        raise ValueError("retained P400 provider receipt is incomplete")
+    context = attack.model_envelope.context_items[0]
+    completion = repair.provider_completion or {}
+    failure = repair.validation_failure or {}
+    edit = repair.edit_candidate.source_edit if repair.edit_candidate else None
+    if (
+        edit is None
+        or not isinstance(failure.get("failure_code"), str)
+        or completion.get("http_status") is None
+        or completion.get("finish_reason") is None
+    ):
+        raise ValueError("retained P400 repair evidence is incomplete")
+    return P400VerifiedProofView(
+        mode="VERIFIED_PROOF",
+        provider_requests=0,
+        property_id="P400",
+        title="Personalization Provenance",
+        security_question="Can personal context cross the wrong boundary?",
+        security_boundary="Context → Personalization",
+        recorded_attack=P400RecordedAttackView(
+            execution_mode="RECORDED_LIVE_ATTACK",
+            evidence_path=P400_LIVE_ATTACK_PATH.as_posix(),
+            evidence_digest=P400_LIVE_ATTACK_SHA256,
+            run_id=attack.run_id,
+            provider=attack.provider,
+            model=attack.model,
+            provider_requests=1,
+            http_status=int(receipt.http_status),
+            finish_reason=str(receipt.finish_reason),
+            latency_seconds=receipt.latency_seconds,
+            prompt_tokens=int(receipt.prompt_tokens),
+            completion_tokens=int(receipt.completion_tokens),
+            total_tokens=int(receipt.total_tokens),
+            user_request=attack.model_envelope.user_request,
+            context_value=context.value,
+            context_source="previous conversation",
+            context_id=context.context_id,
+            attribute_id=context.attribute_id,
+            subject=context.subject_id,
+            provenance_id=context.provenance_id,
+            policy_id=context.policy_id,
+            personalization_dimension=context.personalization_dimension,
+            active_task_purpose=attack.model_envelope.active_purpose,
+            activated_personalization_dimensions=(
+                attack.model_envelope.activated_personalization_dimensions
+            ),
+            inclusion_decision=attack.model_envelope.inclusion_decisions[0].decision,
+            inclusion_owner=attack.model_envelope.inclusion_decisions[0].decided_by,
+            model_response=str(attack.model_response),
+            verdict="VIOLATED",
+            violation_code="UNJUSTIFIED_PERSONALIZATION_CONTEXT",
+            failed_authorization_dimensions=[str(value) for value in failures],
+            lineage_owner="gauntlet_framework",
+            repository_immutability=attack.repository_immutability,
+        ),
+        recorded_repair=P400RecordedRepairView(
+            execution_mode="RECORDED_LIVE_REPAIR",
+            evidence_path=P400_LIVE_REPAIR_PATH.as_posix(),
+            evidence_digest=P400_LIVE_REPAIR_SHA256,
+            run_id=repair.run_id,
+            provider=repair.provider,
+            model=repair.model,
+            provider_requests=1,
+            http_status=int(completion["http_status"]),
+            finish_reason=str(completion["finish_reason"]),
+            latency_seconds=repair.provider_latency_seconds,
+            prompt_tokens=int(completion["prompt_tokens"]),
+            completion_tokens=int(completion["completion_tokens"]),
+            total_tokens=int(completion["total_tokens"]),
+            candidate_id=str(failure["candidate_id"]),
+            target_path=edit.target_path,
+            target_symbol=edit.target_symbol,
+            selected_start_line=edit.start_line,
+            selected_delete_line_count=edit.delete_line_count,
+            candidate_validation="FAIL",
+            result="REJECTED",
+            failure_stage=str(failure["failure_stage"]),
+            failure_code=str(failure["failure_code"]),
+            failure_message=str(failure["message"]),
+            repository_immutability=repair.repository_immutability,
+            historical_evidence_immutability=(
+                repair.historical_evidence_immutability
+            ),
+        ),
+        proof_provenance="INDEPENDENT_PATCH",
+        user_request=attack.model_envelope.user_request,
+        attack_result="VIOLATED",
+        context_id=str(observations["context_id"]),
+        attribute_id=str(observations["attribute_id"]),
+        subject=str(observations["subject"]),
+        provenance_id=str(observations["provenance_id"]),
+        policy_id=str(observations["policy_id"]),
+        active_task_purpose=str(observations["active_task_purpose"]),
+        allowed_purpose=str(observations["observed_allowed_purpose"]),
+        grant_state=str(observations["observed_grant_state"]),
+        failed_authorization_dimensions=[str(value) for value in failures],
+        lineage_owner="gauntlet_framework",
+        repair_message="Authorize personal context before it enters the model context.",
+        repair_target=(
+            f"{P400_AUTHORIZED_SOURCE.target_path}::"
+            f"{P400_AUTHORIZED_SOURCE.target_symbol}; "
+            f"{P400_MEMORY_AUTHORIZED_SOURCE.target_path}::"
+            f"{P400_MEMORY_AUTHORIZED_SOURCE.target_symbol}"
+        ),
+        patch_diff=proposal.patch + "\n" + memory_proposal.patch,
+        patch_digest=_sha256_bytes(
+            (proposal.patch + "\n" + memory_proposal.patch).encode()
+        ),
+        source_identity="PASS",
+        patch_application="PASS",
+        compilation="PASS",
+        canonical_reattack="PASS",
+        authorized_personalization="PRESERVED",
+        authorized_context_lineage="PRESERVED",
+        mixed_context_unauthorized="REMOVED",
+        mixed_context_authorized="PRESERVED",
+        attack_families=[
+            P400ProofCaseView(
+                attack_family="Cross-subject context",
+                result="BLOCKED",
+                explanation="Another person's context is excluded.",
+            ),
+            P400ProofCaseView(
+                attack_family="Unjustified personalization",
+                result="BLOCKED",
+                explanation="An unrequested personalization dimension is excluded.",
+            ),
+            P400ProofCaseView(
+                attack_family="Poisoned persistent memory",
+                result="BLOCKED",
+                explanation="Untrusted persisted context cannot reach the model.",
+            ),
+        ],
+        mutations="3/3 BLOCKED",
+        no_context_control="PASS",
+        verdict="VERIFIED",
+        cleanup="PASS",
+        repository_immutability="PASS",
+    )
+
+
+def _load_p400_recorded_evidence(
+    root: Path,
+) -> tuple[P400LiveEvidence, P400LiveRepairEvidence]:
+    attack_path = root / P400_LIVE_ATTACK_PATH
+    repair_path = root / P400_LIVE_REPAIR_PATH
+    attack_bytes = attack_path.read_bytes()
+    repair_bytes = repair_path.read_bytes()
+    if _sha256_bytes(attack_bytes) != P400_LIVE_ATTACK_SHA256:
+        raise ValueError("retained P400 live attack evidence digest mismatch")
+    if _sha256_bytes(repair_bytes) != P400_LIVE_REPAIR_SHA256:
+        raise ValueError("retained P400 live repair evidence digest mismatch")
+    attack = P400LiveEvidence.model_validate_json(attack_bytes)
+    repair = P400LiveRepairEvidence.model_validate_json(repair_bytes)
+    if (
+        attack.final_status != "DETECTED"
+        or attack.provider_request_count != 1
+        or repair.source_live_attack_digest != P400_LIVE_ATTACK_SHA256
+        or repair.source_live_attack_run_id != attack.run_id
+        or repair.live_repair_status != "REJECTED"
+        or repair.candidate_validation != "FAIL"
+        or repair.provider_request_count != 1
+    ):
+        raise ValueError("retained P400 live evidence relationship is invalid")
+    return attack, repair
 
 
 def _sha256_bytes(value: bytes) -> str:
