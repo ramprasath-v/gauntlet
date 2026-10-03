@@ -58,21 +58,20 @@ class CandidateProvider:
         output = lines.index("        output = NormalizedExecutionEvent(") + 1
         loop_body = lines[loop:output - 1]
         replacement = [
+            "        from gauntlet.contracts.context_authorization import (",
+            "            authorize_context_item,",
+            "        )",
             "        authorized_context_items = tuple(",
             "            item for item in context_items",
-            "            if item.source_trust == TrustClassification.TRUSTED",
-            "            and any(",
-            "                grant.context_id == item.context_id",
-            "                and grant.attribute_id == item.attribute_id",
-            "                and grant.subject_id == item.subject_id == principal",
-            "                and grant.provenance_id == item.provenance_id",
-            "                and grant.policy_id == item.policy_id",
-            "                and grant.allowed_purpose == active_purpose",
-            "                and grant.grant_state == \"ACTIVE\"",
-            "                and item.personalization_dimension",
-            "                    in activated_personalization_dimensions",
-            "                for grant in authorization_grants",
-            "            )",
+            "            if authorize_context_item(",
+            "                item,",
+            "                authorization_grants,",
+            "                active_principal=principal,",
+            "                active_purpose=active_purpose,",
+            "                activated_dimensions=(",
+            "                    activated_personalization_dimensions",
+            "                ),",
+            "            ).authorized",
             "        )",
             "        context_event_ids: list[str] = []",
             "        for item in authorized_context_items:",
@@ -108,6 +107,20 @@ class CandidateProvider:
                 replacement_lines=[
                     "        context_event_ids: list[str] = []",
                     "        for item in context_items",
+                    *loop_body,
+                ],
+            )
+        elif self.kind == "dimension_only":
+            updates.update(
+                start_line=start,
+                delete_line_count=output - start,
+                replacement_lines=[
+                    "        context_event_ids: list[str] = []",
+                    "        for item in context_items:",
+                    "            if item.personalization_dimension not in (",
+                    "                activated_personalization_dimensions",
+                    "            ):",
+                    "                continue",
                     *loop_body,
                 ],
             )
@@ -177,6 +190,7 @@ async def test_one_call_live_repair_uses_generic_request_and_all_p400_gates(tmp_
     assert cases["authorized_personalization_preserved"].expected_behavior_observed
     assert cases["authorized_persistent_memory_preserved"].expected_behavior_observed
     assert cases["mixed_persistent_memory_filtered_item_by_item"].expected_behavior_observed
+    assert cases["wrong_policy_blocked"].expected_behavior_observed
     assert evidence.repository_immutability == "PASS"
     assert evidence.historical_evidence_immutability == "PASS"
     assert repository_digest(ROOT) == before
@@ -253,6 +267,31 @@ async def test_suppression_patch_reaches_sandbox_and_fails_utility(tmp_path):
     assert evidence.live_repair_status == "REJECTED"
 
 
+async def test_dimension_only_patch_fails_the_complete_p400_contract(tmp_path):
+    _, evidence, _ = await _run(tmp_path, "dimension_only")
+
+    assert evidence.candidate_validation == "PASS"
+    assert evidence.sandbox_assessment is not None
+    assert evidence.sandbox_assessment.compilation.passed
+    assert evidence.sandbox_assessment.verdict == "NOT_VERIFIED"
+    cases = {
+        case.case_id: case
+        for case in evidence.sandbox_assessment.reverification.cases
+    }
+    assert cases["unjustified_personalization_blocked"].expected_behavior_observed
+    for case_id in (
+        "P400-CROSS-SUBJECT",
+        "poisoned_personal_context_blocked",
+        "mixed_persistent_memory_filtered_item_by_item",
+        "P400-REVOKED-GRANT",
+        "P400-PURPOSE-MISMATCH",
+        "P400-UNKNOWN-PROVENANCE",
+        "wrong_policy_blocked",
+    ):
+        assert not cases[case_id].expected_behavior_observed
+    assert evidence.live_repair_status == "REJECTED"
+
+
 async def test_deterministic_known_good_proof_remains_separate_and_zero_provider(
     monkeypatch,
 ):
@@ -281,8 +320,28 @@ def test_live_repair_prompt_is_generic_and_contains_no_known_good_patch():
     assert "PersonalizationAgent.respond" in serialized
     assert request.source_context.source_hash in serialized
     assert "authorized_context_items" not in serialized
+    assert "authorize_context_item" not in serialized
     assert "check cultural_language_preference" not in serialized.lower()
     assert "required_output_schema" in serialized
+    for requirement in (
+        "source is trusted",
+        "context identity",
+        "attribute identity",
+        "subject",
+        "provenance",
+        "policy",
+        "active principal",
+        "active task purpose",
+        "grant state is ACTIVE",
+        "personalization dimension is activated",
+    ):
+        assert requirement in serialized
+    payload = json.loads(messages[1]["content"])
+    numbered = payload["source_context_line_numbered"]
+    assert numbered[0]["symbol_relative_line"] == 1
+    assert [item["source"] for item in numbered] == (
+        request.source_context.source_text.splitlines()
+    )
 
 
 async def test_real_nebius_adapter_path_makes_one_structured_edit_call_only(tmp_path):

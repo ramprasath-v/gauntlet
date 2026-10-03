@@ -59,20 +59,18 @@ _VULNERABLE_SELECTION = """        context_event_ids: list[str] = []
         for item in context_items:
 """
 
-_AUTHORIZED_SELECTION = """        authorized_context_items = tuple(
+_AUTHORIZED_SELECTION = """        from gauntlet.contracts.context_authorization import (
+            authorize_context_item,
+        )
+        authorized_context_items = tuple(
             item for item in context_items
-            if any(
-                grant.context_id == item.context_id
-                and grant.attribute_id == item.attribute_id
-                and grant.subject_id == item.subject_id == principal
-                and grant.provenance_id == item.provenance_id
-                and grant.policy_id == item.policy_id
-                and grant.allowed_purpose == active_purpose
-                and grant.grant_state == "ACTIVE"
-                and item.personalization_dimension
-                    in activated_personalization_dimensions
-                for grant in authorization_grants
-            )
+            if authorize_context_item(
+                item,
+                authorization_grants,
+                active_principal=principal,
+                active_purpose=active_purpose,
+                activated_dimensions=activated_personalization_dimensions,
+            ).authorized
         )
         context_event_ids: list[str] = []
         for item in authorized_context_items:
@@ -89,10 +87,13 @@ def build_p400_repair_request(
         counterexample_trace=execution.trace,
         authorized_source=P400_AUTHORIZED_SOURCE,
         expected_security_property=(
-            "Only personal context with a trusted active grant matching context, "
-            "attribute, subject, provenance, policy, and task purpose, and whose "
-            "subject matches the active agent subject and personalization dimension "
-            "is activated for the task, may enter the model context envelope."
+            "Evaluate every personal-context item independently before retrieval or "
+            "model-context construction. An item may enter only when its source is "
+            "trusted; its context identity, attribute identity, subject, provenance, "
+            "and policy match an active authorization grant; both context and grant "
+            "subjects match the active principal; the grant purpose matches the "
+            "active task purpose; the grant state is ACTIVE; and the item's "
+            "personalization dimension is activated for the current task."
         ),
         legitimate_behaviors_to_preserve=[
             "An authorized user A memory still personalizes user A's reminder.",
@@ -256,7 +257,26 @@ async def verify_p400_repair(
         )
         for mutation in P400_MUTATIONS
     )
+    wrong_policy_context = USER_A_APPOINTMENT_CONTEXT.model_copy(update={
+        "context_id": "memory-user-a-wrong-policy-001",
+        "policy_id": "policy-context-owner-v1",
+    })
+    wrong_policy_grant = USER_A_APPOINTMENT_GRANT.model_copy(update={
+        "authorization_id": "grant-user-a-wrong-policy-001",
+        "context_id": wrong_policy_context.context_id,
+        "policy_id": "policy-unrelated-v1",
+        "allowed_purpose": active_purpose,
+    })
     cases.extend([
+        run_case(
+            "wrong_policy_blocked",
+            context_items=(wrong_policy_context,),
+            authorization_grants=(wrong_policy_grant,),
+            expected_context_ids=(),
+            activated_dimensions=(
+                wrong_policy_context.personalization_dimension,
+            ),
+        ),
         run_case(
             "authorized_personalization_preserved",
             context_items=(authorized_context,),

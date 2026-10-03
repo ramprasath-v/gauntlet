@@ -258,7 +258,7 @@ async def test_product_flow_page_loads_and_communicates_demo_scope():
     assert "RUN LIVE" in page
     assert "LOAD VERIFIED REPLAY" in page
     assert "Personalization Agent" in page
-    assert "VIEW RETAINED LIVE ATTACK" in page
+    assert "LOAD RECORDED EVIDENCE" in page
     assert "COMING NEXT" not in page
 
 
@@ -762,13 +762,15 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
 
     assert "COMING NEXT" not in p400
     assert "Attack → Patch → Prove" in p400
-    assert "Unrelated personal context entered the live model request." in p400
-    assert "Gauntlet rejected the proposed code edit before applying it." in p400
+    assert "RUN LIVE ATTACK" in p400
+    assert "GENERATE LIVE PATCH" in p400
+    assert "RUN LIVE PROOF" in p400
+    assert "One structured code-edit request" in p400
     assert (
-        "3/3 attacks blocked while legitimate personalization remained functional."
+        "One repaired-agent request plus the frozen deterministic proof matrix"
         in p400
     )
-    assert "VIEW RETAINED LIVE ATTACK" in p400
+    assert "LOAD RECORDED EVIDENCE" in p400
     assert "VIEW RECORDED LIVE REPAIR" in p400
     assert "VIEW VERIFIED PATCH &amp; PROOF" in p400
     assert "VIOLATED" in p400

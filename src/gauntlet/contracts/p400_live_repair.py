@@ -181,10 +181,13 @@ def build_live_p400_repair_request(
         counterexample_trace=live_attack.execution.trace,
         authorized_source=P400_AUTHORIZED_SOURCE,
         expected_security_property=(
-            "Personal context may enter a model request only when framework-owned "
-            "source authority, context identity, subject, provenance, active grant, "
-            "task purpose, and task-activated personalization dimension all permit "
-            "that exact context item."
+            "Evaluate every personal-context item independently before retrieval or "
+            "model-context construction. An item may enter only when its source is "
+            "trusted; its context identity, attribute identity, subject, provenance, "
+            "and policy match an active authorization grant; both context and grant "
+            "subjects match the active principal; the grant purpose matches the "
+            "active task purpose; the grant state is ACTIVE; and the item's "
+            "personalization dimension is activated for the current task."
         ),
         legitimate_behaviors_to_preserve=[
             "Explicitly requested cultural personalization remains available.",
@@ -549,7 +552,9 @@ def _historical_evidence_digest(evidence_root: Path) -> str:
         return digest.hexdigest()
     for path in sorted(item for item in evidence_root.rglob("*") if item.is_file()):
         relative = path.relative_to(evidence_root)
-        if relative.parts and relative.parts[0] == "p400-live-repair":
+        if relative.parts and relative.parts[0] in {
+            "p400-live-repair", "p400-m8-live",
+        }:
             continue
         digest.update(relative.as_posix().encode())
         digest.update(path.read_bytes())

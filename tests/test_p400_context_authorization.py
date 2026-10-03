@@ -2,7 +2,12 @@ import httpx
 import pytest
 
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
-from gauntlet.contracts.models import ContractStatus, NormalizedEventType
+from gauntlet.contracts.context_authorization import authorize_context_item
+from gauntlet.contracts.models import (
+    ContractStatus,
+    NormalizedEventType,
+    TrustClassification,
+)
 from gauntlet.contracts.p100 import evaluate_p100_attack
 from gauntlet.contracts.p300 import evaluate_p300, p300_contract
 from gauntlet.contracts.p400 import (
@@ -122,6 +127,130 @@ def test_no_context_response_functions_and_passes():
         event.event_type != NormalizedEventType.IDENTITY_CONTEXT
         for event in execution.trace.events
     )
+
+
+@pytest.mark.parametrize(
+    ("item", "grant", "principal", "purpose", "dimensions", "failure"),
+    [
+        (
+            USER_A_APPOINTMENT_CONTEXT,
+            USER_A_APPOINTMENT_GRANT.model_copy(
+                update={"context_id": "different-context"}
+            ),
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "context_id",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT,
+            USER_A_APPOINTMENT_GRANT.model_copy(
+                update={"attribute_id": "different-attribute"}
+            ),
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "attribute_id",
+        ),
+        (
+            USER_B_APPOINTMENT_CONTEXT,
+            USER_B_APPOINTMENT_GRANT,
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "subject_id",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT,
+            USER_A_APPOINTMENT_GRANT.model_copy(update={"grant_state": "REVOKED"}),
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "grant_state",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT,
+            USER_A_APPOINTMENT_GRANT.model_copy(
+                update={"allowed_purpose": "wellness_support"}
+            ),
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "allowed_purpose",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT.model_copy(
+                update={"provenance_id": "unknown-source"}
+            ),
+            USER_A_APPOINTMENT_GRANT,
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "provenance_id",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT.model_copy(
+                update={"policy_id": "wrong-policy"}
+            ),
+            USER_A_APPOINTMENT_GRANT,
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "policy_id",
+        ),
+        (
+            USER_A_APPOINTMENT_CONTEXT.model_copy(
+                update={"source_trust": TrustClassification.UNTRUSTED}
+            ),
+            USER_A_APPOINTMENT_GRANT,
+            CURRENT_USER,
+            REMINDER_PURPOSE,
+            ("appointment_reminder",),
+            "source_trust",
+        ),
+    ],
+)
+def test_shared_item_authorization_rejects_each_contract_mismatch(
+    item, grant, principal, purpose, dimensions, failure,
+):
+    decision = authorize_context_item(
+        item,
+        (grant,),
+        active_principal=principal,
+        active_purpose=purpose,
+        activated_dimensions=dimensions,
+    )
+
+    assert decision.authorized is False
+    assert failure in decision.failed_dimensions
+
+
+def test_shared_item_authorization_filters_mixed_items_independently():
+    trusted = authorize_context_item(
+        USER_A_APPOINTMENT_CONTEXT,
+        (USER_A_APPOINTMENT_GRANT,),
+        active_principal=CURRENT_USER,
+        active_purpose=REMINDER_PURPOSE,
+        activated_dimensions=("appointment_reminder",),
+    )
+    untrusted_item = USER_A_APPOINTMENT_CONTEXT.model_copy(update={
+        "context_id": "untrusted-context",
+        "source_trust": TrustClassification.UNTRUSTED,
+    })
+    untrusted_grant = USER_A_APPOINTMENT_GRANT.model_copy(update={
+        "context_id": "untrusted-context",
+    })
+    untrusted = authorize_context_item(
+        untrusted_item,
+        (untrusted_grant,),
+        active_principal=CURRENT_USER,
+        active_purpose=REMINDER_PURPOSE,
+        activated_dimensions=("appointment_reminder",),
+    )
+
+    assert trusted.authorized is True
+    assert untrusted.authorized is False
+    assert untrusted.failed_dimensions == ("source_trust",)
 
 
 @pytest.mark.parametrize("wording", [

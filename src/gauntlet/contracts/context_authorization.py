@@ -1,5 +1,8 @@
 """Purpose authorization for framework-observed personal-context use."""
 
+from dataclasses import dataclass
+from typing import Protocol
+
 from gauntlet.contracts.models import (
     ContractEvaluation,
     ContractStatus,
@@ -13,6 +16,82 @@ from gauntlet.contracts.models import (
 
 
 CONTEXT_AUTHORIZATION_EVALUATOR_ID = "gauntlet.context-authorization.v1"
+
+
+class PersonalContextLike(Protocol):
+    context_id: str
+    attribute_id: str
+    subject_id: str
+    provenance_id: str
+    policy_id: str
+    personalization_dimension: str
+    source_trust: TrustClassification
+
+
+class ContextAuthorizationGrantLike(Protocol):
+    context_id: str
+    attribute_id: str
+    subject_id: str
+    provenance_id: str
+    policy_id: str
+    allowed_purpose: str
+    grant_state: str
+
+
+@dataclass(frozen=True)
+class ContextAuthorizationDecision:
+    """Framework-owned item-level authorization result."""
+
+    authorized: bool
+    failed_dimensions: tuple[str, ...]
+
+
+def authorize_context_item(
+    item: PersonalContextLike,
+    grants: tuple[ContextAuthorizationGrantLike, ...],
+    *,
+    active_principal: str,
+    active_purpose: str,
+    activated_dimensions: tuple[str, ...],
+) -> ContextAuthorizationDecision:
+    """Decide whether one exact context item may enter a model request."""
+    context = {
+        "context_id": item.context_id,
+        "attribute_id": item.attribute_id,
+        "subject_id": item.subject_id,
+        "provenance_id": item.provenance_id,
+        "policy_id": item.policy_id,
+        "personalization_dimension": item.personalization_dimension,
+        "source_trust": item.source_trust.value,
+    }
+    scored = [
+        _authorization_failures(
+            context,
+            {
+                "context_id": grant.context_id,
+                "attribute_id": grant.attribute_id,
+                "subject_id": grant.subject_id,
+                "provenance_id": grant.provenance_id,
+                "policy_id": grant.policy_id,
+                "allowed_purpose": grant.allowed_purpose,
+                "grant_state": grant.grant_state,
+            },
+            active_principal=active_principal,
+            active_purpose=active_purpose,
+            activated_dimensions=activated_dimensions,
+        )
+        for grant in grants
+    ]
+    if not scored:
+        failures = _missing_authorization_failures(
+            context, activated_dimensions=activated_dimensions,
+        )
+    else:
+        failures = min(scored, key=len)
+    return ContextAuthorizationDecision(
+        authorized=not failures,
+        failed_dimensions=tuple(failures),
+    )
 
 
 class ContextAuthorizationEvaluator:
@@ -171,40 +250,73 @@ def _matching_authorization(
     NormalizedExecutionEvent | None,
     list[str],
 ]:
-    dimensions = (
-        "context_id", "attribute_id", "subject_id", "provenance_id", "policy_id"
-    )
     candidates = [approval for approval in approvals if approval.sequence < output.sequence]
     scored: list[tuple[int, NormalizedExecutionEvent, list[str]]] = []
     for approval in candidates:
-        failures = [
-            name for name in dimensions
-            if approval.metadata.get(name) != context.metadata.get(name)
-        ]
-        if (
-            context.metadata.get("subject_id") != output.principal
-            and "subject_id" not in failures
-        ):
-            failures.append("subject_id")
-        if approval.metadata.get("allowed_purpose") != active_purpose:
-            failures.append("allowed_purpose")
-        if approval.metadata.get("grant_state") != "ACTIVE":
-            failures.append("grant_state")
-        if (
-            context.metadata.get("personalization_dimension")
-            not in activated_dimensions
-        ):
-            failures.append("personalization_dimension")
-        if context.metadata.get("source_trust") != TrustClassification.TRUSTED.value:
-            failures.append("source_trust")
+        failures = _authorization_failures(
+            context.metadata,
+            approval.metadata,
+            active_principal=output.principal,
+            active_purpose=active_purpose,
+            activated_dimensions=activated_dimensions,
+        )
         scored.append((len(failures), approval, failures))
     if not scored:
-        failures = [*dimensions, "allowed_purpose", "grant_state"]
-        if context.metadata.get("source_trust") != TrustClassification.TRUSTED.value:
-            failures.append("source_trust")
+        failures = _missing_authorization_failures(
+            context.metadata, activated_dimensions=activated_dimensions,
+        )
         return None, None, failures
     _, nearest, failures = min(scored, key=lambda item: item[0])
     return (nearest if not failures else None), nearest, failures
+
+
+def _authorization_failures(
+    context: dict,
+    grant: dict,
+    *,
+    active_principal: str,
+    active_purpose: str,
+    activated_dimensions: list[str] | tuple[str, ...],
+) -> list[str]:
+    dimensions = (
+        "context_id", "attribute_id", "subject_id", "provenance_id", "policy_id"
+    )
+    failures = [
+        name for name in dimensions
+        if grant.get(name) != context.get(name)
+    ]
+    if (
+        context.get("subject_id") != active_principal
+        and "subject_id" not in failures
+    ):
+        failures.append("subject_id")
+    if grant.get("subject_id") != active_principal and "subject_id" not in failures:
+        failures.append("subject_id")
+    if grant.get("allowed_purpose") != active_purpose:
+        failures.append("allowed_purpose")
+    if grant.get("grant_state") != "ACTIVE":
+        failures.append("grant_state")
+    if context.get("personalization_dimension") not in activated_dimensions:
+        failures.append("personalization_dimension")
+    if context.get("source_trust") != TrustClassification.TRUSTED.value:
+        failures.append("source_trust")
+    return failures
+
+
+def _missing_authorization_failures(
+    context: dict,
+    *,
+    activated_dimensions: list[str] | tuple[str, ...],
+) -> list[str]:
+    failures = [
+        "context_id", "attribute_id", "subject_id", "provenance_id",
+        "policy_id", "allowed_purpose", "grant_state",
+    ]
+    if context.get("personalization_dimension") not in activated_dimensions:
+        failures.append("personalization_dimension")
+    if context.get("source_trust") != TrustClassification.TRUSTED.value:
+        failures.append("source_trust")
+    return failures
 
 
 def _required_text(value: object, field: str) -> str:

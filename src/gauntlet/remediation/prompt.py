@@ -84,6 +84,9 @@ counterexample trace, expected security property, preserved behaviors, and
 bounded source context are the complete repair inputs.
 Modify only the authorized target_path and target_symbol. Address the stated
 security property generally while preserving every listed legitimate behavior.
+Treat the complete contract invariant and expected security property as the
+acceptance condition; do not optimize only for the observed counterexample or
+its first failed dimension.
 Do not modify tests or verifiers, bypass the counterexample, or encode a
 fixture-specific expected answer. Propose the smallest reasonable repair as one
 contiguous structured source edit.
@@ -165,6 +168,13 @@ def _test_prompt(request: RemediationRequest) -> str:
 
 def build_edit_messages(request: RemediationRequest) -> list[dict[str, str]]:
     payload = _payload(request)
+    if _is_contract_request(request):
+        payload["source_context_line_numbered"] = [
+            {"symbol_relative_line": index, "source": line}
+            for index, line in enumerate(
+                request.source_context.source_text.splitlines(), start=1
+            )
+        ]
     payload["required_output_schema"] = GeneratedEditCandidate.model_json_schema()
     return [
         {"role": "system", "content": _edit_prompt(request)},

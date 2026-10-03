@@ -171,6 +171,7 @@ async def test_known_good_patch_passes_contract_mutations_utility_and_integrity(
     assert all(by_id[item.mutation_id].expected_behavior_observed for item in P400_MUTATIONS)
     assert by_id["authorized_personalization_preserved"].expected_behavior_observed
     assert by_id["no_context_control"].expected_behavior_observed
+    assert by_id["wrong_policy_blocked"].expected_behavior_observed
     assert all(
         case.evaluation.status == ContractStatus.PASS
         for case in assessment.reverification.cases
@@ -184,12 +185,11 @@ def test_known_good_patch_filters_before_context_and_not_by_output_content():
         if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
     ).lower()
 
+    assert "authorize_context_item" in changed
     assert "authorization_grants" in changed
-    assert "item.subject_id == principal" in changed
-    assert "item.personalization_dimension" in changed
-    assert "in activated_personalization_dimensions" in changed
-    assert "allowed_purpose == active_purpose" in changed
-    assert "grant_state == \"active\"" in changed
+    assert "active_principal=principal" in changed
+    assert "active_purpose=active_purpose" in changed
+    assert "activated_personalization_dimensions" in changed
     assert "output_text" not in changed
     assert "response" not in changed
     assert "appointment" not in changed
@@ -212,6 +212,20 @@ def test_unjustified_personalization_uses_the_same_generic_repair_handoff():
     )
     assert evidence.observations["activated_personalization_dimensions"] == []
     assert request.source_context.target_symbol == "PersonalizationAgent.respond"
+    property_text = request.expected_security_property
+    for requirement in (
+        "source is trusted",
+        "context identity",
+        "attribute identity",
+        "subject",
+        "provenance",
+        "policy",
+        "active principal",
+        "active task purpose",
+        "grant state is ACTIVE",
+        "personalization dimension is activated",
+    ):
+        assert requirement in property_text
 
 
 async def test_repair_filters_unjustified_context_and_preserves_task_authorized_items():
