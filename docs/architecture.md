@@ -391,6 +391,20 @@ canonical retained diff and the independent P100, P200, 21/21 compatibility,
 and 4/4 mutation results. The integration makes zero provider calls and cannot
 represent replay proof as output from the measured live candidate.
 
+M8.1 also exposes an explicit P100 `Run Live` controller. It delegates to the
+existing M7.2 orchestrator and permits exactly one Nebius/Kimi request per user
+run. Progress comes from real orchestration callbacks rather than simulated
+streaming. The web adapter reports safe provider/model/timing metadata,
+candidate and schema status, and deterministic gate results. Provider,
+decoding, authorization, sandbox, or proof failures stop the live path at the
+observed gate. The UI can then offer the separate verified replay action, but
+never substitutes replay evidence into the live result. That action fetches
+the canonical P100 composition with zero provider calls, replaces the live
+result view, scrolls to an explicit `LIVE CANDIDATE · REJECTED →
+VERIFIED_REPLAY` transition, and renders the retained patch and proof using
+the same progress, hero-result, status-card, chip, and receipt vocabulary as
+the P300 console.
+
 The composition fails closed. The live receipt, provider-output sidecar,
 timing sidecar, current authorized source, and replay target/source identity
 must agree, and all referenced artifacts must pass their existing integrity

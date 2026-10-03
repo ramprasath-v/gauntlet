@@ -195,14 +195,19 @@ class M72LiveOrchestrator:
 
             _emit(on_stage, "AI_PATCH", "REQUESTING_MODEL")
             request_count = 1
+            provider_started = monotonic()
             raw = await self.provider.generate_live_demo_candidate(request)
+            provider_latency_seconds = monotonic() - provider_started
             try:
                 candidate = parse_generated_repair_candidate(raw)
             except Exception as exc:
                 validation = "FAIL"
                 failure_stage = "VALIDATE"
                 failure_message = "Candidate rejected: " + safe_live_message(exc)
-                _emit(on_stage, "AI_PATCH", "CANDIDATE_RECEIVED")
+                _emit(
+                    on_stage, "AI_PATCH", "CANDIDATE_RECEIVED",
+                    provider_latency_seconds=provider_latency_seconds,
+                )
                 _emit(on_stage, "VALIDATE", "FAIL")
                 return self._persist(
                     evidence_path, run_id, started, before_digest, request_count,
@@ -212,7 +217,10 @@ class M72LiveOrchestrator:
                 )
             candidate_id = str(uuid4())
             candidate_digest, field_digests = candidate_identity(candidate)
-            _emit(on_stage, "AI_PATCH", "CANDIDATE_RECEIVED")
+            _emit(
+                on_stage, "AI_PATCH", "CANDIDATE_RECEIVED",
+                provider_latency_seconds=provider_latency_seconds,
+            )
 
             _emit(on_stage, "VALIDATE", "RUNNING")
             materialized: dict[str, object] = {}
@@ -222,7 +230,12 @@ class M72LiveOrchestrator:
                 validation = "FAIL"
                 failure_stage = "VALIDATE"
                 failure_message = proposal.message
-                _emit(on_stage, "VALIDATE", "FAIL")
+                _emit(
+                    on_stage, "VALIDATE", "FAIL",
+                    failure_stage=proposal.failure_stage,
+                    failure_code=proposal.failure_code,
+                    message=proposal.message,
+                )
             else:
                 validation = "PASS"
                 patch = proposal.patch

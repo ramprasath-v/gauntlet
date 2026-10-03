@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the replay-only M8 product demo on loopback."""
+"""Serve the M8 live-and-replay product demo on loopback."""
 
 from pathlib import Path
 

@@ -224,6 +224,16 @@ closed at `patch_authorization / edit_range_splits_compound_statement` and is
 shown as `REJECTED BY SECURITY CONTRACT`. The console never applies or repairs
 that candidate.
 
+P100 also has a separate `Run Live` action that invokes the existing M7.2
+one-request Nebius/Kimi repair workflow. It displays actual attack, provider,
+candidate, validation, and downstream proof progress. A rejected or failing
+candidate remains the live result and cannot be relabeled as verified; judges
+must explicitly choose `View Verified Patch & Proof` or `Run Verified
+Evidence` to enter the independently retained replay path. The browser now
+performs that transition visibly, moves focus to the replay result, and uses
+the established P300 progress/result/proof-card presentation while preserving
+P100-specific attack, rejection, patch, and provenance details.
+
 The next stage is explicitly `VERIFIED PATCH — REPLAY`. It displays the exact
 canonical retained diff and its independently verified P100 block, P200
 preservation, 21/21 compatibility, and 4/4 mutation results. Structured

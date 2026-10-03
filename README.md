@@ -38,16 +38,24 @@ PYTHONPATH=src:. python scripts/run_m8_demo.py
 
 Open `http://127.0.0.1:8080`. The console offers the Customer Support Agent's
 P100 Untrusted Review and P300 Refund Authority scenarios, plus a clearly
-labeled Personalization placeholder. P300 `Run Live` uses the existing M7.7
-Nebius/Nemotron one-call workflow and writes integrity-bound v2 evidence.
-`Load Verified Replay` makes zero provider calls. P100 is an honest verified
-evidence run rather than a simulated live-provider action.
+labeled Personalization placeholder. P100 exposes two distinct actions:
+`Run Live` makes one fresh Nebius/Kimi request through the existing M7.2
+pipeline, while `Run Verified Evidence` loads the committed rejection and
+independently verified replay without contacting a provider. A failed live
+candidate stops at its actual gate and never silently becomes replay proof.
+`View Verified Patch & Proof` then performs an explicit zero-provider
+transition into the separately retained replay, with the canonical patch and
+P100, P200, compatibility, and mutation results shown as proof cards.
+P300 `Run Live` uses the existing M7.7 Nebius/Nemotron one-call workflow and
+writes integrity-bound v2 evidence. Its verified replay also makes zero
+provider calls.
 
-Live P300 requires `NEBIUS_API_KEY` in the environment or the local ignored
-`.env`. It always uses the existing approved us-central1 endpoint and
-`nvidia/nemotron-3-super-120b-a12b` configuration. The editable refund limit
-configures the existing P300 contract; NVIDIA Nemotron generates scenarios and
-Gauntlet's deterministic evaluator owns every PASS or VIOLATED verdict.
+Live actions require `NEBIUS_API_KEY` in the environment or the local ignored
+`.env`. Live P100 requires the approved global Token Factory endpoint and
+`moonshotai/Kimi-K2.7-Code`; live P300 uses the approved us-central1 endpoint
+and `nvidia/nemotron-3-super-120b-a12b`. The editable refund limit configures
+the existing P300 contract; NVIDIA Nemotron generates scenarios and Gauntlet's
+deterministic evaluator owns every PASS or VIOLATED verdict.
 
 Ordinary clean review request:
 
