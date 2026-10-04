@@ -4,26 +4,51 @@ from gauntlet.llm.nebius import (
     NEMOTRON_LIGHTNING_MODEL,
     NEMOTRON_REASONING_DISABLED,
     NEMOTRON_SUPER_MODEL,
+    QWEN_35_MODEL,
     NebiusTokenFactoryClient,
 )
-from gauntlet.remediation.models import GeneratedRepairCandidate, RemediationRequest
-from gauntlet.remediation.prompt import build_messages, build_revision_messages
+from gauntlet.remediation.models import (
+    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    RemediationRequest,
+)
+from gauntlet.remediation.prompt import (
+    build_edit_messages, build_edit_revision_messages,
+    build_live_demo_messages, build_test_messages, build_test_revision_messages,
+)
 from gauntlet.remediation.retry_models import SafeProviderCompletion
+
+
+EDIT_SCHEMA_NAME = "edit_candidate"
+TEST_SCHEMA_NAME = "test_candidate"
+LIVE_DEMO_SCHEMA_NAME = "repair_candidate"
 
 
 class RemediationProvider(Protocol):
     provider_name: str
     model_name: str
 
-    async def generate(self, request: RemediationRequest) -> str: ...
+    async def generate_edit(self, request: RemediationRequest) -> str: ...
+
+    async def generate_test(
+        self, request: RemediationRequest, *, derived_patch: str,
+    ) -> str: ...
 
 
 class RetryRemediationProvider(RemediationProvider, Protocol):
-    async def generate_revision(
+    async def generate_edit_revision(
         self,
         request: RemediationRequest,
         *,
-        previous_candidate: dict[str, object],
+        previous_edit: dict[str, object],
+        failure_feedback: dict[str, object],
+    ) -> str: ...
+
+    async def generate_test_revision(
+        self,
+        request: RemediationRequest,
+        *,
+        derived_patch: str,
+        previous_test: dict[str, object],
         failure_feedback: dict[str, object],
     ) -> str: ...
 
@@ -32,38 +57,95 @@ class RetryRemediationProvider(RemediationProvider, Protocol):
 
 class NebiusNemotronRemediationProvider:
     provider_name = "nebius_token_factory"
-    max_output_tokens = 4_096
+    max_edit_tokens = 2_048
+    max_test_tokens = 2_048
+    max_live_demo_tokens = 2_048
 
     def __init__(self, client: NebiusTokenFactoryClient):
         self.client = client
         self.model_name = client.config.model or ""
 
-    async def generate(self, request: RemediationRequest) -> str:
-        return await self._complete(build_messages(request))
+    async def generate_edit(self, request: RemediationRequest) -> str:
+        return await self._complete(
+            build_edit_messages(request),
+            response_schema=GeneratedEditCandidate.model_json_schema(),
+            schema_name=EDIT_SCHEMA_NAME,
+            max_tokens=self.max_edit_tokens,
+        )
 
-    async def generate_revision(
+    async def generate_test(
+        self, request: RemediationRequest, *, derived_patch: str,
+    ) -> str:
+        return await self._complete(
+            build_test_messages(request, derived_patch=derived_patch),
+            response_schema=GeneratedTestCandidate.model_json_schema(),
+            schema_name=TEST_SCHEMA_NAME,
+            max_tokens=self.max_test_tokens,
+        )
+
+    async def generate_live_demo_candidate(
+        self, request: RemediationRequest,
+    ) -> str:
+        """Generate one combined v3 candidate for the separately scoped M7.2 path."""
+        return await self._complete(
+            build_live_demo_messages(request),
+            response_schema=GeneratedRepairCandidate.model_json_schema(),
+            schema_name=LIVE_DEMO_SCHEMA_NAME,
+            max_tokens=self.max_live_demo_tokens,
+        )
+
+    async def generate_edit_revision(
         self,
         request: RemediationRequest,
         *,
-        previous_candidate: dict[str, str | None],
+        previous_edit: dict[str, object],
         failure_feedback: dict[str, object],
     ) -> str:
-        return await self._complete(build_revision_messages(
-            request,
-            previous_candidate=previous_candidate,
-            failure_feedback=failure_feedback,
-        ))
+        return await self._complete(
+            build_edit_revision_messages(
+                request,
+                previous_edit=previous_edit,
+                failure_feedback=failure_feedback,
+            ),
+            response_schema=GeneratedEditCandidate.model_json_schema(),
+            schema_name=EDIT_SCHEMA_NAME,
+            max_tokens=self.max_edit_tokens,
+        )
 
-    async def _complete(self, messages: list[dict[str, str]]) -> str:
+    async def generate_test_revision(
+        self,
+        request: RemediationRequest,
+        *,
+        derived_patch: str,
+        previous_test: dict[str, object],
+        failure_feedback: dict[str, object],
+    ) -> str:
+        return await self._complete(
+            build_test_revision_messages(
+                request,
+                derived_patch=derived_patch,
+                previous_test=previous_test,
+                failure_feedback=failure_feedback,
+            ),
+            response_schema=GeneratedTestCandidate.model_json_schema(),
+            schema_name=TEST_SCHEMA_NAME,
+            max_tokens=self.max_test_tokens,
+        )
+
+    async def _complete(
+        self, messages: list[dict[str, str]], *,
+        response_schema: dict, schema_name: str, max_tokens: int,
+    ) -> str:
         reasoning_options = {}
         if self.model_name == NEMOTRON_SUPER_MODEL:
             reasoning_options["reasoning_directive"] = NEMOTRON_REASONING_DISABLED
-        elif self.model_name == NEMOTRON_LIGHTNING_MODEL:
+        elif self.model_name in {NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL}:
             reasoning_options["chat_template_kwargs"] = {"enable_thinking": False}
         return await self.client.complete(
             messages,
-            response_schema=GeneratedRepairCandidate.model_json_schema(),
-            max_tokens=self.max_output_tokens,
+            response_schema=response_schema,
+            schema_name=schema_name,
+            max_tokens=max_tokens,
             **reasoning_options,
         )
 

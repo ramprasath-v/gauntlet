@@ -1,18 +1,24 @@
 """Deterministic boundary from untrusted repair candidate to trusted result."""
 import ast
 import difflib
+import io
 import json
+import textwrap
+import tokenize
 from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
 from gauntlet.remediation.models import (
     FailureStage,
+    GeneratedEditCandidate,
     GeneratedRepairCandidate,
+    GeneratedTestCandidate,
     RegressionTestSyntaxError,
     RepairContext,
     RepairFailure,
     RepairProposal,
+    StrictModel,
 )
 
 
@@ -21,8 +27,36 @@ def _digest(value: str | None) -> str:
     return sha256(serialized.encode()).hexdigest()
 
 
-def _failure(
+def combined_candidate_identity(
     candidate: GeneratedRepairCandidate,
+) -> tuple[str, dict[str, str], dict[str, int]]:
+    fields = candidate.model_dump(mode="json")
+    return (
+        sha256(candidate.model_dump_json().encode()).hexdigest(),
+        {name: _digest(value) for name, value in fields.items()},
+        {
+            name: len(value) if isinstance(value, str) else len(
+                json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+            )
+            for name, value in fields.items()
+        },
+    )
+
+
+def restamp_failure_identity(
+    failure: RepairFailure, candidate: GeneratedRepairCandidate,
+) -> RepairFailure:
+    """Normalize a part-level failure to the combined candidate identity."""
+    digest, field_digests, field_lengths = combined_candidate_identity(candidate)
+    return failure.model_copy(update={
+        "candidate_digest": digest,
+        "candidate_field_digests": field_digests,
+        "candidate_field_lengths": field_lengths,
+    })
+
+
+def _failure(
+    part: StrictModel,
     context: RepairContext,
     candidate_id: str,
     *,
@@ -32,10 +66,10 @@ def _failure(
     diagnostics: dict[str, str | int | bool | None],
     attempt: int,
 ) -> RepairFailure:
-    fields = candidate.model_dump(mode="json")
+    fields = part.model_dump(mode="json")
     return RepairFailure(
         candidate_id=candidate_id,
-        candidate_digest=sha256(candidate.model_dump_json().encode()).hexdigest(),
+        candidate_digest=sha256(part.model_dump_json().encode()).hexdigest(),
         candidate_field_digests={name: _digest(value) for name, value in fields.items()},
         candidate_field_lengths={
             name: len(value) if isinstance(value, str) else len(
@@ -60,49 +94,18 @@ def _failure(
     )
 
 
-def validate_candidate(
-    candidate: GeneratedRepairCandidate,
+def _resolve_symbol_source(
+    edit: GeneratedEditCandidate,
     repair_context: RepairContext,
     repository_root: Path,
+    candidate_id: str,
     *,
-    attempt: int = 1,
-    materialized_output: dict[str, str] | None = None,
-) -> RepairProposal | RepairFailure:
-    """Validate in fixed order and never repair model-generated artifacts."""
-    candidate_id = str(uuid4())
+    attempt: int,
+) -> tuple[str, list[str], list[str], int, int] | RepairFailure:
+    """Resolve the authorized symbol.
 
-    if not candidate.rationale.strip():
-        return _failure(
-            candidate, repair_context, candidate_id,
-            stage="candidate_validation", code="empty_rationale",
-            message="Candidate rationale must be non-empty.",
-            diagnostics={"field": "rationale"}, attempt=attempt,
-        )
-
-    edit = candidate.source_edit
-    if (edit.target_path != repair_context.target_path
-            or edit.target_symbol != repair_context.target_symbol):
-        return _failure(
-            candidate, repair_context, candidate_id,
-            stage="patch_authorization", code="unauthorized_edit_target",
-            message="Structured edit does not match the authorized target.",
-            diagnostics={
-                "path_match": edit.target_path == repair_context.target_path,
-                "symbol_match": edit.target_symbol == repair_context.target_symbol,
-            }, attempt=attempt,
-        )
-
-    if edit.source_hash != repair_context.source_hash:
-        return _failure(
-            candidate, repair_context, candidate_id,
-            stage="source_identity", code="candidate_source_hash_mismatch",
-            message="Structured edit does not reference the trusted source revision.",
-            diagnostics={
-                "expected_source_hash": repair_context.source_hash,
-                "candidate_source_hash": edit.source_hash,
-            }, attempt=attempt,
-        )
-
+    Returns (original_text, full_lines, symbol_lines, symbol_start, symbol_end).
+    """
     root = repository_root.resolve(strict=True)
     relative = Path(repair_context.target_path)
     target = None
@@ -113,7 +116,7 @@ def validate_candidate(
             target = None
     if (target is None or not target.is_relative_to(root) or not target.is_file()):
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="patch_authorization", code="authorized_target_unreadable",
             message="Trusted repair target could not be resolved safely.",
             diagnostics={"target_path": repair_context.target_path}, attempt=attempt,
@@ -123,14 +126,14 @@ def validate_candidate(
         source = target.read_bytes().decode("utf-8")
     except UnicodeDecodeError as exc:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="source_identity", code="authorized_source_not_utf8",
             message="Trusted authorized source is not valid UTF-8.",
             diagnostics={"error_type": type(exc).__name__}, attempt=attempt,
         )
     if "\r" in source:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="source_identity", code="unsupported_source_line_endings",
             message="Structured edits require LF source without normalization.",
             diagnostics={"contains_carriage_return": True}, attempt=attempt,
@@ -151,7 +154,7 @@ def validate_candidate(
             raise ValueError("authorized symbol is missing")
     except (SyntaxError, ValueError) as exc:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="source_identity", code="authorized_symbol_unreadable",
             message="Trusted authorized symbol could not be identified.",
             diagnostics={"error_type": type(exc).__name__}, attempt=attempt,
@@ -166,7 +169,7 @@ def validate_candidate(
     observed_hash = sha256(bounded_source.encode()).hexdigest()
     if observed_hash != repair_context.source_hash:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="source_identity", code="current_source_hash_mismatch",
             message="Current authorized source differs from trusted RepairContext.",
             diagnostics={
@@ -174,43 +177,204 @@ def validate_candidate(
                 "observed_source_hash": observed_hash,
             }, attempt=attempt,
         )
+    return source, full_lines, symbol_lines, symbol_start, symbol_end
 
-    start = edit.start_line - 1
-    end = start + edit.delete_line_count
+
+_COMPOUND_STATEMENTS = (
+    ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith,
+    ast.Try, ast.Match, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+)
+
+
+def _python_range_boundary_failure(
+    symbol_lines: list[str], *, start_line: int, delete_line_count: int,
+) -> tuple[str, dict[str, str | int | bool | None]] | None:
+    """Classify exact model-selected boundaries without changing them."""
+    source = "\n".join(symbol_lines) + "\n"
+    end_line = start_line + delete_line_count - 1
+    spans: list[tuple[int, int, str]] = []
+    stack: list[tuple[str, int]] = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.OP and token.string in "([{":
+                stack.append((token.string, token.start[0]))
+            elif token.type == tokenize.OP and token.string in ")]}" and stack:
+                opening, opening_line = stack.pop()
+                spans.append((opening_line, token.end[0], f"delimiter_{opening}"))
+            elif token.type == tokenize.STRING and token.start[0] < token.end[0]:
+                spans.append((token.start[0], token.end[0], "multiline_string"))
+    except (IndentationError, tokenize.TokenError):
+        return None
+
+    for opening_line, closing_line, construct in spans:
+        start_splits = opening_line < start_line <= closing_line
+        end_splits = delete_line_count > 0 and opening_line <= end_line < closing_line
+        if start_splits or end_splits:
+            return "edit_range_splits_python_construct", {
+                "start_line": start_line,
+                "delete_line_count": delete_line_count,
+                "selected_end_line": end_line,
+                "construct": construct,
+                "construct_start_line": opening_line,
+                "construct_end_line": closing_line,
+                "split_boundary": "start" if start_splits else "end",
+            }
+
+    if start_line > 1 and symbol_lines[start_line - 2].rstrip().endswith("\\"):
+        return "edit_range_splits_python_construct", {
+            "start_line": start_line, "delete_line_count": delete_line_count,
+            "selected_end_line": end_line, "construct": "explicit_continuation",
+            "split_boundary": "start",
+        }
+    if (delete_line_count > 0
+            and symbol_lines[end_line - 1].rstrip().endswith("\\")):
+        return "edit_range_splits_python_construct", {
+            "start_line": start_line, "delete_line_count": delete_line_count,
+            "selected_end_line": end_line, "construct": "explicit_continuation",
+            "split_boundary": "end",
+        }
+
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if (not isinstance(node, _COMPOUND_STATEMENTS)
+                or node.end_lineno is None
+                or (node.lineno == 1 and node.end_lineno == len(symbol_lines))):
+            continue
+        if (delete_line_count > 0 and start_line <= node.lineno <= end_line
+                and end_line < node.end_lineno):
+            return "edit_range_splits_compound_statement", {
+                "start_line": start_line,
+                "delete_line_count": delete_line_count,
+                "selected_end_line": end_line,
+                "construct": type(node).__name__,
+                "construct_start_line": node.lineno,
+                "construct_end_line": node.end_lineno,
+                "split_boundary": "end",
+            }
+    return None
+
+
+def validate_source_edit(
+    edit: GeneratedEditCandidate,
+    repair_context: RepairContext,
+    repository_root: Path,
+    *,
+    attempt: int = 1,
+    materialized_output: dict[str, object] | None = None,
+) -> str | RepairFailure:
+    """Validate the source-edit call output; return the derived patch or failure."""
+    candidate_id = str(uuid4())
+
+    if not edit.rationale.strip():
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="candidate_validation", code="empty_rationale",
+            message="Candidate rationale must be non-empty.",
+            diagnostics={"field": "rationale"}, attempt=attempt,
+        )
+
+    source_edit = edit.source_edit
+    if (source_edit.target_path != repair_context.target_path
+            or source_edit.target_symbol != repair_context.target_symbol):
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="patch_authorization", code="unauthorized_edit_target",
+            message="Structured edit does not match the authorized target.",
+            diagnostics={
+                "path_match": source_edit.target_path == repair_context.target_path,
+                "symbol_match": source_edit.target_symbol == repair_context.target_symbol,
+            }, attempt=attempt,
+        )
+
+    if source_edit.source_hash != repair_context.source_hash:
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="source_identity", code="candidate_source_hash_mismatch",
+            message="Structured edit does not reference the trusted source revision.",
+            diagnostics={
+                "expected_source_hash": repair_context.source_hash,
+                "candidate_source_hash": source_edit.source_hash,
+            }, attempt=attempt,
+        )
+
+    resolved = _resolve_symbol_source(
+        edit, repair_context, repository_root, candidate_id, attempt=attempt,
+    )
+    if isinstance(resolved, RepairFailure):
+        return resolved
+    original_text, full_lines, symbol_lines, symbol_start, symbol_end = resolved
+
+    start = source_edit.start_line - 1
+    end = start + source_edit.delete_line_count
     valid_range = (
         0 <= start <= len(symbol_lines)
         and end <= len(symbol_lines)
-        and (edit.delete_line_count == 0 or start < len(symbol_lines))
+        and (source_edit.delete_line_count == 0 or start < len(symbol_lines))
     )
     if not valid_range:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="patch_authorization", code="edit_range_outside_symbol",
             message="Structured edit range is outside the authorized symbol.",
             diagnostics={
-                "start_line": edit.start_line,
-                "delete_line_count": edit.delete_line_count,
+                "start_line": source_edit.start_line,
+                "delete_line_count": source_edit.delete_line_count,
                 "symbol_line_count": len(symbol_lines),
             }, attempt=attempt,
         )
 
+    boundary_failure = _python_range_boundary_failure(
+        symbol_lines, start_line=source_edit.start_line,
+        delete_line_count=source_edit.delete_line_count,
+    )
+    if boundary_failure is not None:
+        code, diagnostics = boundary_failure
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="patch_authorization", code=code,
+            message=(
+                "Structured edit range splits an incomplete Python source "
+                "construct; Gauntlet will not adjust the model-selected range."
+            ), diagnostics=diagnostics, attempt=attempt,
+        )
+
     patched_symbol_lines = (
-        symbol_lines[:start] + edit.replacement_lines + symbol_lines[end:]
+        symbol_lines[:start] + source_edit.replacement_lines + symbol_lines[end:]
     )
     patched_lines = (
         full_lines[:symbol_start] + patched_symbol_lines + full_lines[symbol_end:]
     )
-    patched_source = "\n".join(patched_lines) + ("\n" if source.endswith("\n") else "")
-    if patched_source == source:
+    patched_source = "\n".join(patched_lines) + ("\n" if original_text.endswith("\n") else "")
+    if patched_source == original_text:
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="candidate_validation", code="source_edit_noop",
             message="Structured edit does not change the authorized source.",
-            diagnostics={"start_line": edit.start_line}, attempt=attempt,
+            diagnostics={"start_line": source_edit.start_line}, attempt=attempt,
+        )
+
+    try:
+        ast.parse(patched_source)
+    except SyntaxError as exc:
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="candidate_validation", code="reconstructed_source_invalid_python",
+            message=(
+                "Exact structured edit reconstruction is not valid Python; "
+                "Gauntlet will not repair candidate source or indentation."
+            ),
+            diagnostics={
+                "syntax_message": exc.msg, "line": exc.lineno,
+                "offset": exc.offset, "start_line": source_edit.start_line,
+                "delete_line_count": source_edit.delete_line_count,
+            }, attempt=attempt,
         )
 
     patch = "".join(difflib.unified_diff(
-        source.splitlines(keepends=True),
+        original_text.splitlines(keepends=True),
         patched_source.splitlines(keepends=True),
         fromfile=f"a/{repair_context.target_path}",
         tofile=f"b/{repair_context.target_path}",
@@ -222,25 +386,47 @@ def validate_candidate(
     ]
     if any("Kestrel-7749" in line for line in changed_lines):
         return _failure(
-            candidate, repair_context, candidate_id,
+            edit, repair_context, candidate_id,
             stage="patch_authorization", code="canary_literal_changed",
             message="Structured edit attempts to change the verifier canary literal.",
             diagnostics={"canary_literal_changed": True}, attempt=attempt,
         )
 
-    regression_test = "\n".join(candidate.regression_test.lines) + "\n"
+    if (edit.optional_policy_artifact is not None
+            and not edit.optional_policy_artifact.strip()):
+        return _failure(
+            edit, repair_context, candidate_id,
+            stage="candidate_validation", code="empty_policy_artifact",
+            message="Optional policy artifact must be non-empty when present.",
+            diagnostics={"field": "optional_policy_artifact"}, attempt=attempt,
+        )
+
     if materialized_output is not None:
-        materialized_output.update({
-            "patch": patch,
-            "regression_test": regression_test,
-        })
+        materialized_output["patch"] = patch
+        materialized_output["trusted_original_lines"] = list(symbol_lines[start:end])
+    return patch
+
+
+def validate_regression_test(
+    test: GeneratedTestCandidate,
+    repair_context: RepairContext,
+    *,
+    attempt: int = 1,
+    materialized_output: dict[str, object] | None = None,
+) -> str | RepairFailure:
+    """Validate the regression-test call output; return test source or failure."""
+    candidate_id = str(uuid4())
+
+    regression_test = "\n".join(test.regression_test.lines) + "\n"
+    if materialized_output is not None:
+        materialized_output["regression_test"] = regression_test
 
     try:
         tree = ast.parse(regression_test)
     except SyntaxError as exc:
         diagnostic = RegressionTestSyntaxError(regression_test, exc)
         return _failure(
-            candidate, repair_context, candidate_id,
+            test, repair_context, candidate_id,
             stage="regression_syntax", code="invalid_python",
             message="Candidate regression test is not valid Python source.",
             diagnostics={
@@ -257,7 +443,7 @@ def validate_candidate(
              and node.name.startswith("test_")]
     if not tests:
         return _failure(
-            candidate, repair_context, candidate_id,
+            test, repair_context, candidate_id,
             stage="regression_structure", code="missing_test_function",
             message="Candidate regression test has no test_* function.",
             diagnostics={"top_level_test_count": 0}, attempt=attempt,
@@ -267,27 +453,50 @@ def validate_candidate(
     )
     if assertion_count == 0:
         return _failure(
-            candidate, repair_context, candidate_id,
+            test, repair_context, candidate_id,
             stage="regression_structure", code="missing_assertion",
             message="Candidate regression test has no assertion in a test function.",
             diagnostics={"top_level_test_count": len(tests), "assertion_count": 0},
             attempt=attempt,
         )
+    return regression_test
 
-    if (candidate.optional_policy_artifact is not None
-            and not candidate.optional_policy_artifact.strip()):
-        return _failure(
-            candidate, repair_context, candidate_id,
-            stage="candidate_validation", code="empty_policy_artifact",
-            message="Optional policy artifact must be non-empty when present.",
-            diagnostics={"field": "optional_policy_artifact"}, attempt=attempt,
-        )
 
+def validate_candidate(
+    candidate: GeneratedRepairCandidate,
+    repair_context: RepairContext,
+    repository_root: Path,
+    *,
+    attempt: int = 1,
+    materialized_output: dict[str, object] | None = None,
+) -> RepairProposal | RepairFailure:
+    """Validate in fixed order and never repair model-generated artifacts."""
+    materialized: dict[str, str] = {}
+    edit = GeneratedEditCandidate(
+        rationale=candidate.rationale,
+        source_edit=candidate.source_edit,
+        optional_policy_artifact=candidate.optional_policy_artifact,
+    )
+    patch_or_failure = validate_source_edit(
+        edit, repair_context, repository_root,
+        attempt=attempt, materialized_output=materialized,
+    )
+    if isinstance(patch_or_failure, RepairFailure):
+        return restamp_failure_identity(patch_or_failure, candidate)
+    test = GeneratedTestCandidate(regression_test=candidate.regression_test)
+    test_or_failure = validate_regression_test(
+        test, repair_context, attempt=attempt, materialized_output=materialized,
+    )
+    if isinstance(test_or_failure, RepairFailure):
+        return restamp_failure_identity(test_or_failure, candidate)
+
+    if materialized_output is not None:
+        materialized_output.update(materialized)
     return RepairProposal(
         repair_id=str(uuid4()),
         **repair_context.model_dump(),
         rationale=candidate.rationale,
-        patch=patch,
-        regression_test=regression_test,
+        patch=materialized["patch"],
+        regression_test=materialized["regression_test"],
         optional_policy_artifact=candidate.optional_policy_artifact,
     )

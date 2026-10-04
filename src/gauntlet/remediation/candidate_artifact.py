@@ -9,14 +9,15 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, StrictModel, StructuredRegressionTest,
-    StructuredSourceEdit,
+    GeneratedEditCandidate, GeneratedRepairCandidate, StrictModel,
+    StructuredRegressionTest, StructuredSourceEdit,
 )
 
 
 LEGACY_CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v1"
 STRUCTURED_V2_CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v2"
 CANDIDATE_ARTIFACT_SCHEMA_VERSION = "gauntlet.repair-candidate.v3"
+EDIT_EVIDENCE_SCHEMA_VERSION = "gauntlet.repair-edit-evidence.v1"
 CANDIDATE_FIELDS = (
     "rationale", "source_edit", "regression_test", "optional_policy_artifact",
 )
@@ -39,6 +40,19 @@ def candidate_identity(
     )
 
 
+def edit_candidate_identity(
+    candidate: GeneratedEditCandidate,
+) -> tuple[str, dict[str, str]]:
+    fields = candidate.model_dump(mode="json")
+    return (
+        _digest(candidate.model_dump_json()),
+        {
+            name: _digest(json.dumps(value, ensure_ascii=True))
+            for name, value in fields.items()
+        },
+    )
+
+
 class LegacyGeneratedRepairCandidate(StrictModel):
     rationale: str
     patch: str
@@ -47,7 +61,7 @@ class LegacyGeneratedRepairCandidate(StrictModel):
 
 
 class LegacyStructuredSourceEditV2(StrictModel):
-    """Historical v2 edit shape retained solely for evidence loading."""
+    """Historical v2 source-edit contract retained for evidence loading."""
 
     target_path: str
     target_symbol: str
@@ -102,6 +116,98 @@ class CandidateArtifactReference(StrictModel):
         if path.is_absolute() or ".." in path.parts or not value:
             raise ValueError("Candidate artifact reference must be a safe relative path")
         return path.as_posix()
+
+
+class ValidatedEditArtifactReference(StrictModel):
+    """Link to a validated but incomplete Call 1 evidence artifact."""
+
+    schema_version: Literal["gauntlet.repair-edit-evidence.v1"]
+    edit_id: str
+    originating_attempt: int = Field(ge=1, le=3)
+    path: str
+    edit_candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    integrity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("edit_id")
+    @classmethod
+    def valid_edit_id(cls, value: str) -> str:
+        UUID(value)
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def safe_relative_path(cls, value: str) -> str:
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts or not value:
+            raise ValueError("Edit evidence reference must be a safe relative path")
+        return path.as_posix()
+
+
+class ValidatedEditArtifact(StrictModel):
+    """Integrity-bound Call 1 evidence; never a complete repair candidate."""
+
+    schema_version: Literal["gauntlet.repair-edit-evidence.v1"]
+    edit_id: str
+    run_id: str
+    originating_attempt: int = Field(ge=1, le=3)
+    provider: str
+    model: str
+    created_at: datetime
+    trace_id: str
+    boundary_id: str
+    evidence_ids: list[str] = Field(min_length=1)
+    target_path: str
+    target_symbol: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rationale: str
+    source_edit: StructuredSourceEdit
+    optional_policy_artifact: str | None = None
+    trusted_original_lines: list[str]
+    derived_patch: str
+    validation_result: Literal["PASS"]
+    edit_candidate_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    edit_field_digests: dict[str, str]
+    trusted_original_lines_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    derived_patch_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    integrity_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("edit_id", "run_id")
+    @classmethod
+    def valid_uuid(cls, value: str) -> str:
+        UUID(value)
+        return value
+
+    def edit_candidate(self) -> GeneratedEditCandidate:
+        return GeneratedEditCandidate(
+            rationale=self.rationale,
+            source_edit=self.source_edit,
+            optional_policy_artifact=self.optional_policy_artifact,
+        )
+
+    @model_validator(mode="after")
+    def exact_content_and_integrity(self) -> "ValidatedEditArtifact":
+        if (
+            self.target_path != self.source_edit.target_path
+            or self.target_symbol != self.source_edit.target_symbol
+            or self.source_hash != self.source_edit.source_hash
+        ):
+            raise ValueError("Edit evidence identity differs from the source edit")
+        candidate_digest, field_digests = edit_candidate_identity(
+            self.edit_candidate()
+        )
+        if self.edit_candidate_digest != candidate_digest:
+            raise ValueError("Edit evidence integrity failed: candidate digest")
+        if self.edit_field_digests != field_digests:
+            raise ValueError("Edit evidence integrity failed: field digests")
+        if self.trusted_original_lines_digest != _digest(
+            json.dumps(self.trusted_original_lines, ensure_ascii=True)
+        ):
+            raise ValueError("Edit evidence integrity failed: trusted original lines")
+        if self.derived_patch_digest != _digest(self.derived_patch):
+            raise ValueError("Edit evidence integrity failed: derived patch")
+        if self.integrity_digest != _edit_artifact_digest(self):
+            raise ValueError("Edit evidence integrity failed: integrity digest")
+        return self
 
 
 class _ArtifactIdentity(StrictModel):
@@ -259,6 +365,86 @@ def _artifact_digest(
     ),
 ) -> str:
     return _digest(_artifact_payload(artifact))
+
+
+def _edit_artifact_payload(artifact: ValidatedEditArtifact) -> str:
+    return json.dumps(
+        artifact.model_dump(mode="json", exclude={"integrity_digest"}),
+        ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+    )
+
+
+def _edit_artifact_digest(artifact: ValidatedEditArtifact) -> str:
+    return _digest(_edit_artifact_payload(artifact))
+
+
+def persist_validated_edit_artifact(
+    candidate: GeneratedEditCandidate,
+    *,
+    path: Path,
+    edit_id: str,
+    run_id: str,
+    originating_attempt: int,
+    provider: str,
+    model: str,
+    trace_id: str,
+    boundary_id: str,
+    evidence_ids: list[str],
+    target_path: str,
+    target_symbol: str,
+    source_hash: str,
+    trusted_original_lines: list[str],
+    derived_patch: str,
+) -> ValidatedEditArtifact:
+    candidate_digest, field_digests = edit_candidate_identity(candidate)
+    values = dict(
+        schema_version=EDIT_EVIDENCE_SCHEMA_VERSION,
+        edit_id=edit_id,
+        run_id=run_id,
+        originating_attempt=originating_attempt,
+        provider=provider,
+        model=model,
+        created_at=datetime.now(timezone.utc),
+        trace_id=trace_id,
+        boundary_id=boundary_id,
+        evidence_ids=evidence_ids,
+        target_path=target_path,
+        target_symbol=target_symbol,
+        source_hash=source_hash,
+        rationale=candidate.rationale,
+        source_edit=candidate.source_edit,
+        optional_policy_artifact=candidate.optional_policy_artifact,
+        trusted_original_lines=trusted_original_lines,
+        derived_patch=derived_patch,
+        validation_result="PASS",
+        edit_candidate_digest=candidate_digest,
+        edit_field_digests=field_digests,
+        trusted_original_lines_digest=_digest(
+            json.dumps(trusted_original_lines, ensure_ascii=True)
+        ),
+        derived_patch_digest=_digest(derived_patch),
+    )
+    provisional = ValidatedEditArtifact.model_construct(
+        **values, integrity_digest="0" * 64
+    )
+    artifact = ValidatedEditArtifact(
+        **values, integrity_digest=_edit_artifact_digest(provisional)
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(artifact.model_dump_json(indent=2) + "\n")
+    return artifact
+
+
+def load_validated_edit_artifact(path: Path) -> ValidatedEditArtifact:
+    return ValidatedEditArtifact.model_validate_json(path.read_text())
+
+
+def validated_edit_artifact_location(
+    run_evidence_path: Path, originating_attempt: int, edit_id: str,
+) -> tuple[Path, str]:
+    directory = run_evidence_path.parent / f"{run_evidence_path.stem}.edits"
+    path = directory / f"attempt-{originating_attempt:02d}-{edit_id}.json"
+    return path, path.relative_to(run_evidence_path.parent).as_posix()
 
 
 def persist_candidate_artifact(

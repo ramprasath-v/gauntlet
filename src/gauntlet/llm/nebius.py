@@ -21,6 +21,7 @@ NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_HOST = "api.tokenfactory.us-central1.nebius.com"
 NEMOTRON_LIGHTNING_MODEL = "nvidia/Nemotron-3_5-Lightning"
 QWEN_35_MODEL = "Qwen/Qwen3.5-397B-A17B"
+KIMI_K27_CODE_MODEL = "moonshotai/Kimi-K2.7-Code"
 REPAIR_SCHEMA_NAME = "repair_proposal"
 NEMOTRON_REASONING_ENABLED = "/think"
 NEMOTRON_REASONING_DISABLED = "/no_think"
@@ -265,6 +266,7 @@ class NebiusTokenFactoryClient:
     async def complete(
         self, messages: Sequence[Mapping[str, str]], *,
         response_schema: dict[str, Any] | None = None,
+        schema_name: str | None = None,
         reasoning_directive: str | None = None,
         chat_template_kwargs: Mapping[str, bool] | None = None,
         max_tokens: int | None = None,
@@ -282,13 +284,14 @@ class NebiusTokenFactoryClient:
             dict(chat_template_kwargs) if chat_template_kwargs is not None else None
         )
         if serialized_chat_template_kwargs is not None:
-            if self.config.model != NEMOTRON_LIGHTNING_MODEL:
+            if self.config.model not in {NEMOTRON_LIGHTNING_MODEL, QWEN_35_MODEL}:
                 raise ValueError(
-                    "chat_template_kwargs reasoning control requires Nemotron-3.5-Lightning"
+                    "chat_template_kwargs reasoning control requires an approved "
+                    "hybrid-thinking remediation model"
                 )
             if serialized_chat_template_kwargs != {"enable_thinking": False}:
                 raise ValueError(
-                    "Nemotron-3.5-Lightning requires enable_thinking=false for remediation"
+                    "Remediation requires enable_thinking=false"
                 )
         if max_tokens is not None and (
             isinstance(max_tokens, bool) or not isinstance(max_tokens, int)
@@ -307,7 +310,7 @@ class NebiusTokenFactoryClient:
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": REPAIR_SCHEMA_NAME,
+                    "name": schema_name or REPAIR_SCHEMA_NAME,
                     "schema": response_schema,
                 },
             }

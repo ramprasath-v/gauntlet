@@ -1,0 +1,401 @@
+{
+  "schema_version": "gauntlet.repair-run.v1",
+  "result": {
+    "status": "FAILED",
+    "run_id": "23c51de5-17bd-493e-99a1-58c4f8929035",
+    "trace_id": "9daaab45-bfd6-451f-b99e-9061b972ac8d",
+    "boundary_id": "fc16a189-de18-41e2-83f0-f2eb2548ffa3",
+    "evidence_ids": [
+      "0ca2676b-d973-4df9-85ca-185548db2da0",
+      "b41ccdbd-8787-4329-ae17-e878cb0b8c17",
+      "e046abed-2286-40be-8612-f5eed149b980",
+      "dc3de4dc-fcf1-4141-ba56-35daa84c03c1",
+      "e39525de-c09f-474f-8d04-843d1028c78e"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "Qwen/Qwen3.5-397B-A17B",
+    "total_attempts": 3,
+    "attempts": [
+      {
+        "attempt": 1,
+        "candidate_id": "338cc166-eb45-4769-93b2-3621f6870e7e",
+        "previous_failure_id": null,
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+        "candidate_field_digests": {
+          "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+          "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+          "regression_test": "839684151996651002f477188398fe2bf959b870e01a6d00ac69ad4368894423",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 426,
+          "source_edit": 1135,
+          "regression_test": 1645,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "338cc166-eb45-4769-93b2-3621f6870e7e",
+          "attempt_number": 1,
+          "path": "two-call-nonthinking-live-20260929T035007Z.candidates/attempt-01-338cc166-eb45-4769-93b2-3621f6870e7e.json",
+          "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+          "integrity_digest": "c7e8512cafb45abe8d4d24d087ff7d001a1f2e3172792846d7c76b0648caa6b7"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "c4930a85-9d50-4e25-ae56-a3b43cfa1f33",
+          "originating_attempt": 1,
+          "path": "two-call-nonthinking-live-20260929T035007Z.edits/attempt-01-c4930a85-9d50-4e25-ae56-a3b43cfa1f33.json",
+          "edit_candidate_digest": "bab0edc16e430bed83f6d1a09d78225ace09b4e0cd4fd0ce7db87519aeb52d36",
+          "integrity_digest": "83271910424967850ea292c7519d1277b29233cc81cb14f784c004ba50c87b36"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": false,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "FAIL",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "ea0a57f2-3258-4c21-8049-d7a11a19042e",
+          "repair_id": null,
+          "candidate_id": "338cc166-eb45-4769-93b2-3621f6870e7e",
+          "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+          "candidate_field_digests": {
+            "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+            "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+            "regression_test": "839684151996651002f477188398fe2bf959b870e01a6d00ac69ad4368894423",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 426,
+            "source_edit": 1135,
+            "regression_test": 1645,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "9daaab45-bfd6-451f-b99e-9061b972ac8d",
+          "boundary_id": "fc16a189-de18-41e2-83f0-f2eb2548ffa3",
+          "evidence_ids": [
+            "0ca2676b-d973-4df9-85ca-185548db2da0",
+            "b41ccdbd-8787-4329-ae17-e878cb0b8c17",
+            "e046abed-2286-40be-8612-f5eed149b980",
+            "dc3de4dc-fcf1-4141-ba56-35daa84c03c1",
+            "e39525de-c09f-474f-8d04-843d1028c78e"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "regression_structure",
+          "failure_code": "missing_test_function",
+          "message": "Candidate regression test has no test_* function.",
+          "diagnostics": {
+            "top_level_test_count": 0
+          },
+          "attempt": 1,
+          "created_at": "2026-09-29T03:50:16.181331Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "edit_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-a3c0c342774ef4f3",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 2038,
+          "prompt_tokens": 2235,
+          "completion_tokens": 483,
+          "total_tokens": 2718
+        },
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-846c983745126331",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1694,
+          "prompt_tokens": 2251,
+          "completion_tokens": 364,
+          "total_tokens": 2615
+        },
+        "started_at": "2026-09-29T03:50:07.602463Z",
+        "completed_at": "2026-09-29T03:50:16.184333Z",
+        "duration_seconds": 8.58182928399765
+      },
+      {
+        "attempt": 2,
+        "candidate_id": "89b2690b-59ce-43c8-a672-f8266c2d44e1",
+        "previous_failure_id": "ea0a57f2-3258-4c21-8049-d7a11a19042e",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+        "candidate_field_digests": {
+          "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+          "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+          "regression_test": "839684151996651002f477188398fe2bf959b870e01a6d00ac69ad4368894423",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 426,
+          "source_edit": 1135,
+          "regression_test": 1645,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "89b2690b-59ce-43c8-a672-f8266c2d44e1",
+          "attempt_number": 2,
+          "path": "two-call-nonthinking-live-20260929T035007Z.candidates/attempt-02-89b2690b-59ce-43c8-a672-f8266c2d44e1.json",
+          "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+          "integrity_digest": "35be40b3e464c68e1eddbccf88c20d5e86b59f74ee1e9afea4b4a7d96ecfef17"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "c4930a85-9d50-4e25-ae56-a3b43cfa1f33",
+          "originating_attempt": 1,
+          "path": "two-call-nonthinking-live-20260929T035007Z.edits/attempt-01-c4930a85-9d50-4e25-ae56-a3b43cfa1f33.json",
+          "edit_candidate_digest": "bab0edc16e430bed83f6d1a09d78225ace09b4e0cd4fd0ce7db87519aeb52d36",
+          "integrity_digest": "83271910424967850ea292c7519d1277b29233cc81cb14f784c004ba50c87b36"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": true,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "FAIL",
+        "proposal_execution": "NOT_RUN",
+        "patch_proof": "NOT_RUN",
+        "repair_id": null,
+        "failure": {
+          "failure_id": "9eb4f952-d4d7-4fc7-87eb-485f82de4c93",
+          "repair_id": null,
+          "candidate_id": "89b2690b-59ce-43c8-a672-f8266c2d44e1",
+          "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+          "candidate_field_digests": {
+            "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+            "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+            "regression_test": "839684151996651002f477188398fe2bf959b870e01a6d00ac69ad4368894423",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 426,
+            "source_edit": 1135,
+            "regression_test": 1645,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "9daaab45-bfd6-451f-b99e-9061b972ac8d",
+          "boundary_id": "fc16a189-de18-41e2-83f0-f2eb2548ffa3",
+          "evidence_ids": [
+            "0ca2676b-d973-4df9-85ca-185548db2da0",
+            "b41ccdbd-8787-4329-ae17-e878cb0b8c17",
+            "e046abed-2286-40be-8612-f5eed149b980",
+            "dc3de4dc-fcf1-4141-ba56-35daa84c03c1",
+            "e39525de-c09f-474f-8d04-843d1028c78e"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "candidate_validation",
+          "failure_code": "duplicate_candidate",
+          "message": "Retry returned a previously observed candidate unchanged.",
+          "diagnostics": {
+            "candidate_digest": "d7c2fb074e6defa8034ca3e8b66ff6db210a208be3afe01d923293c66515cc58",
+            "failed_call": "test"
+          },
+          "attempt": 2,
+          "created_at": "2026-09-29T03:50:21.197410Z"
+        },
+        "proof_id": null,
+        "workspace_id": null,
+        "edit_provider_completion": null,
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-95c87003a7cef2e2",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1880,
+          "prompt_tokens": 2970,
+          "completion_tokens": 433,
+          "total_tokens": 3403
+        },
+        "started_at": "2026-09-29T03:50:16.201865Z",
+        "completed_at": "2026-09-29T03:50:21.200043Z",
+        "duration_seconds": 4.998155144989141
+      },
+      {
+        "attempt": 3,
+        "candidate_id": "396caa64-ba01-4ed9-b3b0-7e833d37e74a",
+        "previous_failure_id": "9eb4f952-d4d7-4fc7-87eb-485f82de4c93",
+        "provider": "nebius_token_factory",
+        "model": "Qwen/Qwen3.5-397B-A17B",
+        "candidate_digest": "3865f18f9aeacf53d2307a915ec3821cf1b2ec71829e0a10b4bead0cca688871",
+        "candidate_field_digests": {
+          "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+          "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+          "regression_test": "8885bc5b209903982ecc6596848a32fabaa380cb392a43521de4133072ad3ee6",
+          "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        },
+        "candidate_field_lengths": {
+          "rationale": 426,
+          "source_edit": 1135,
+          "regression_test": 991,
+          "optional_policy_artifact": 4
+        },
+        "candidate_artifact": {
+          "schema_version": "gauntlet.repair-candidate.v3",
+          "candidate_id": "396caa64-ba01-4ed9-b3b0-7e833d37e74a",
+          "attempt_number": 3,
+          "path": "two-call-nonthinking-live-20260929T035007Z.candidates/attempt-03-396caa64-ba01-4ed9-b3b0-7e833d37e74a.json",
+          "candidate_digest": "3865f18f9aeacf53d2307a915ec3821cf1b2ec71829e0a10b4bead0cca688871",
+          "integrity_digest": "34432bcb2383a054615fc680e8f05890677195089dcc19923fbb09390b9198cb"
+        },
+        "edit_artifact": {
+          "schema_version": "gauntlet.repair-edit-evidence.v1",
+          "edit_id": "c4930a85-9d50-4e25-ae56-a3b43cfa1f33",
+          "originating_attempt": 1,
+          "path": "two-call-nonthinking-live-20260929T035007Z.edits/attempt-01-c4930a85-9d50-4e25-ae56-a3b43cfa1f33.json",
+          "edit_candidate_digest": "bab0edc16e430bed83f6d1a09d78225ace09b4e0cd4fd0ce7db87519aeb52d36",
+          "integrity_digest": "83271910424967850ea292c7519d1277b29233cc81cb14f784c004ba50c87b36"
+        },
+        "edit_provider_call": "PASS",
+        "edit_decode": "PASS",
+        "edit_validation": "PASS",
+        "edit_reused": true,
+        "test_provider_call": "PASS",
+        "test_decode": "PASS",
+        "test_validation": "PASS",
+        "proposal_execution": "FAIL",
+        "patch_proof": "FAIL",
+        "repair_id": "06df3f72-d2ea-4eeb-a787-0ebf6c1a6bd8",
+        "failure": {
+          "failure_id": "6ef64419-1723-4d3a-837d-9821c9fc64c3",
+          "repair_id": "06df3f72-d2ea-4eeb-a787-0ebf6c1a6bd8",
+          "candidate_id": "396caa64-ba01-4ed9-b3b0-7e833d37e74a",
+          "candidate_digest": "3865f18f9aeacf53d2307a915ec3821cf1b2ec71829e0a10b4bead0cca688871",
+          "candidate_field_digests": {
+            "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+            "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+            "regression_test": "8885bc5b209903982ecc6596848a32fabaa380cb392a43521de4133072ad3ee6",
+            "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+          },
+          "candidate_field_lengths": {
+            "rationale": 426,
+            "source_edit": 1135,
+            "regression_test": 991,
+            "optional_policy_artifact": 4
+          },
+          "trace_id": "9daaab45-bfd6-451f-b99e-9061b972ac8d",
+          "boundary_id": "fc16a189-de18-41e2-83f0-f2eb2548ffa3",
+          "evidence_ids": [
+            "0ca2676b-d973-4df9-85ca-185548db2da0",
+            "b41ccdbd-8787-4329-ae17-e878cb0b8c17",
+            "e046abed-2286-40be-8612-f5eed149b980",
+            "dc3de4dc-fcf1-4141-ba56-35daa84c03c1",
+            "e39525de-c09f-474f-8d04-843d1028c78e"
+          ],
+          "provider": "nebius_token_factory",
+          "model": "Qwen/Qwen3.5-397B-A17B",
+          "target_path": "victims/clean_customer_support/agent.py",
+          "target_symbol": "CleanCustomerSupportAgent.chat",
+          "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+          "failure_type": "indirect_prompt_injection",
+          "failure_stage": "compile",
+          "failure_code": "compile_failed",
+          "message": "Patched Python source did not compile.",
+          "diagnostics": {
+            "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+            "exit_code": 1,
+            "timed_out": false,
+            "stdout": "*** Error compiling 'victims/clean_customer_support/agent.py'...\nSorry: IndentationError: expected an indented block after 'else' statement on line 33 (agent.py, line 34)\n",
+            "stderr": "",
+            "workspace_id": "1d453aa9-1ee9-4117-a489-4635671e3e5a"
+          },
+          "attempt": 3,
+          "created_at": "2026-09-29T03:50:24.779196Z"
+        },
+        "proof_id": null,
+        "workspace_id": "1d453aa9-1ee9-4117-a489-4635671e3e5a",
+        "edit_provider_completion": null,
+        "test_provider_completion": {
+          "http_status": 200,
+          "response_id": "chatcmpl-b09586a2ba639c67",
+          "returned_model": "Qwen/Qwen3.5-397B-A17B",
+          "finish_reason": "stop",
+          "content_type": "str",
+          "content_length": 1035,
+          "prompt_tokens": 3020,
+          "completion_tokens": 241,
+          "total_tokens": 3261
+        },
+        "started_at": "2026-09-29T03:50:21.217830Z",
+        "completed_at": "2026-09-29T03:50:24.818045Z",
+        "duration_seconds": 3.6002056730067125
+      }
+    ],
+    "final_failure": {
+      "failure_id": "6ef64419-1723-4d3a-837d-9821c9fc64c3",
+      "repair_id": "06df3f72-d2ea-4eeb-a787-0ebf6c1a6bd8",
+      "candidate_id": "396caa64-ba01-4ed9-b3b0-7e833d37e74a",
+      "candidate_digest": "3865f18f9aeacf53d2307a915ec3821cf1b2ec71829e0a10b4bead0cca688871",
+      "candidate_field_digests": {
+        "rationale": "906cc734bf8fb30bbeab3bc21bbc3d095a69a2117c66d8fb5b685bedb66f60e4",
+        "source_edit": "4d068a22e45414e892cc8e88b7d398e4cf8f4569539bdafe3e5b88c95d5f27ce",
+        "regression_test": "8885bc5b209903982ecc6596848a32fabaa380cb392a43521de4133072ad3ee6",
+        "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "candidate_field_lengths": {
+        "rationale": 426,
+        "source_edit": 1135,
+        "regression_test": 991,
+        "optional_policy_artifact": 4
+      },
+      "trace_id": "9daaab45-bfd6-451f-b99e-9061b972ac8d",
+      "boundary_id": "fc16a189-de18-41e2-83f0-f2eb2548ffa3",
+      "evidence_ids": [
+        "0ca2676b-d973-4df9-85ca-185548db2da0",
+        "b41ccdbd-8787-4329-ae17-e878cb0b8c17",
+        "e046abed-2286-40be-8612-f5eed149b980",
+        "dc3de4dc-fcf1-4141-ba56-35daa84c03c1",
+        "e39525de-c09f-474f-8d04-843d1028c78e"
+      ],
+      "provider": "nebius_token_factory",
+      "model": "Qwen/Qwen3.5-397B-A17B",
+      "target_path": "victims/clean_customer_support/agent.py",
+      "target_symbol": "CleanCustomerSupportAgent.chat",
+      "source_hash": "ce85ae9a66cd3805649e0ba4912a9f4ce220fc1407560188b3909e9b6db0ba16",
+      "failure_type": "indirect_prompt_injection",
+      "failure_stage": "compile",
+      "failure_code": "compile_failed",
+      "message": "Patched Python source did not compile.",
+      "diagnostics": {
+        "command": "/Users/ramprasath/Documents/ChatGPT/Gauntlet/.venv/bin/python -m compileall -q src victims",
+        "exit_code": 1,
+        "timed_out": false,
+        "stdout": "*** Error compiling 'victims/clean_customer_support/agent.py'...\nSorry: IndentationError: expected an indented block after 'else' statement on line 33 (agent.py, line 34)\n",
+        "stderr": "",
+        "workspace_id": "1d453aa9-1ee9-4117-a489-4635671e3e5a"
+      },
+      "attempt": 3,
+      "created_at": "2026-09-29T03:50:24.779196Z"
+    },
+    "safe_failure_summary": "compile: Patched Python source did not compile.",
+    "started_at": "2026-09-29T03:50:07.579039Z",
+    "completed_at": "2026-09-29T03:50:24.831755Z",
+    "duration_seconds": 17.252665007996256,
+    "original_repository_unchanged": true
+  },
+  "result_digest": "814dcfea2ca0245bfda0ed43950455880b22e071026c4faa73139bd8d8de4e56"
+}

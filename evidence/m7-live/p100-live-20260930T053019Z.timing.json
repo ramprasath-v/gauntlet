@@ -1,0 +1,61 @@
+{
+  "attack_seconds": 0.00523015100043267,
+  "credential_scan": "PASS",
+  "integrity_digest": "74ae79d344bdceb8ddbfc2ff4b5d86396d6e6cbc488f3c6bd083e437cf4c622c",
+  "proof_seconds": null,
+  "provider_request_count": 1,
+  "provider_seconds": 7.120832688000519,
+  "receipt_file_digest": "34219dabc8e32b7841f7e6915d0ccc9f619a7962cbc3eb71775d6054fc8a8f44",
+  "receipt_path": "evidence/m7-live/p100-live-20260930T053019Z.json",
+  "run_id": "aa235ab8-a42d-4dca-bd26-cf626b845274",
+  "schema_version": "gauntlet.p100-live-timing.v1",
+  "stage_events": [
+    {
+      "details": {},
+      "elapsed_seconds": 0.06905393800116144,
+      "stage": "ATTACK",
+      "status": "RUNNING"
+    },
+    {
+      "details": {},
+      "elapsed_seconds": 0.07428408900159411,
+      "stage": "ATTACK",
+      "status": "REPRODUCED"
+    },
+    {
+      "details": {
+        "boundary_id": "947cc703-55c4-438e-b299-4663a761bc31",
+        "trace_id": "a1fa5591-1080-4df5-9c92-759e866ddc70"
+      },
+      "elapsed_seconds": 0.0758264999894891,
+      "stage": "DIAGNOSE",
+      "status": "COMPLETE"
+    },
+    {
+      "details": {},
+      "elapsed_seconds": 0.07582833498599939,
+      "stage": "AI_PATCH",
+      "status": "REQUESTING_MODEL"
+    },
+    {
+      "details": {},
+      "elapsed_seconds": 7.196661022986518,
+      "stage": "AI_PATCH",
+      "status": "CANDIDATE_RECEIVED"
+    },
+    {
+      "details": {},
+      "elapsed_seconds": 7.1966667429951485,
+      "stage": "VALIDATE",
+      "status": "RUNNING"
+    },
+    {
+      "details": {},
+      "elapsed_seconds": 7.202131545986049,
+      "stage": "VALIDATE",
+      "status": "FAIL"
+    }
+  ],
+  "total_seconds": 7.235658394987695,
+  "validation_seconds": 0.005464802990900353
+}

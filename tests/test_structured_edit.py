@@ -9,11 +9,13 @@ from pydantic import ValidationError
 from gauntlet.attacks.indirect_prompt_injection import IndirectPromptInjectionAttack
 from gauntlet.remediation.context import build_source_context
 from gauntlet.remediation.models import (
-    GeneratedRepairCandidate, RepairContext, RepairFailure, RepairProposal,
+    GeneratedEditCandidate, GeneratedRepairCandidate, RepairContext,
+    RepairFailure, RepairProposal,
     StructuredRegressionTest, StructuredSourceEdit,
 )
 from gauntlet.remediation.validation import validate_candidate
 from gauntlet.sandbox.m4_executor import M41RepairExecutor
+from gauntlet.sandbox.m4_models import PatchAssessment
 from gauntlet.sandbox.workspace import repository_digest
 from victims.customer_support.app import create_app
 
@@ -61,8 +63,8 @@ def candidate(source, *, start, delete, replacement, test_lines=None):
     )
 
 
-def test_model_schema_omits_trusted_original_lines():
-    schema = GeneratedRepairCandidate.model_json_schema()
+def test_call_one_schema_omits_trusted_original_lines():
+    schema = GeneratedEditCandidate.model_json_schema()
     edit_schema = schema["$defs"]["StructuredSourceEdit"]
 
     assert "expected_original_lines" not in edit_schema["properties"]
@@ -177,18 +179,6 @@ async def test_trusted_source_is_not_read_before_claim_and_hash_gates(
         assert isinstance(result, RepairFailure)
 
 
-def test_deterministic_validator_contains_no_benchmark_repair_recipe():
-    validator_source = (ROOT / "src/gauntlet/remediation/validation.py").read_text()
-
-    for repair_fragment in (
-        "privileged_context=False",
-        "External review content",
-        "enforce_data_only_boundary=True",
-        "_test_only_known_good_change",
-    ):
-        assert repair_fragment not in validator_source
-
-
 async def test_reconstruction_and_diff_contain_exact_model_replacement_only(
     trusted_context, tmp_path
 ):
@@ -242,7 +232,7 @@ async def test_reconstruction_and_diff_contain_exact_model_replacement_only(
     assert repository_digest(ROOT) == before_digest
 
 
-async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
+async def test_invalid_model_replacement_is_rejected_without_correction(
     trusted_context
 ):
     source, context = trusted_context
@@ -256,16 +246,13 @@ async def test_invalid_model_replacement_reaches_compile_failure_unchanged(
         ),
         context, ROOT,
     )
-    assert isinstance(proposal, RepairProposal)
-    assert f"+{invalid}" in proposal.patch
-    assert f"+{invalid}:" not in proposal.patch
-
-    result = await M41RepairExecutor(ROOT).run(proposal)
-
-    assert isinstance(result, RepairFailure)
-    assert (result.failure_stage, result.failure_code) == (
-        "compile", "compile_failed",
-    )
+    assert isinstance(proposal, RepairFailure)
+    assert proposal.failure_code == "reconstructed_source_invalid_python"
+    assert proposal.diagnostics["start_line"] == 1
+    assert proposal.diagnostics["delete_line_count"] == 1
+    assert candidate(
+        source, start=1, delete=1, replacement=[invalid]
+    ).source_edit.replacement_lines == [invalid]
     assert repository_digest(ROOT) == before_digest
 
 
@@ -287,3 +274,12 @@ async def test_valid_but_incorrect_model_range_is_not_silently_corrected(
     assert isinstance(proposal, RepairProposal)
     assert f"-{lines[chosen_line - 1]}" in proposal.patch
     assert f"+{replacement[0]}" in proposal.patch
+
+
+def test_deterministic_validator_contains_no_benchmark_repair_recipe():
+    validator_source = (ROOT / "src/gauntlet/remediation/validation.py").read_text()
+    for repair_fragment in (
+        "privileged_context=False", "External review content",
+        "enforce_data_only_boundary=True", "_test_only_known_good_change",
+    ):
+        assert repair_fragment not in validator_source

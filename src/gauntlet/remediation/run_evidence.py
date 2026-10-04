@@ -7,11 +7,13 @@ from typing import Literal
 from pydantic import TypeAdapter, model_validator
 
 from gauntlet.remediation.models import StrictModel
-from gauntlet.remediation.candidate_artifact import load_candidate_artifact
+from gauntlet.remediation.candidate_artifact import (
+    load_candidate_artifact, load_validated_edit_artifact,
+)
 from gauntlet.remediation.retry_models import RepairRunResult
 
 
-RUN_EVIDENCE_SCHEMA_VERSION = "gauntlet.repair-run.v1"
+RUN_EVIDENCE_SCHEMA_VERSION = "gauntlet.repair-run.v2"
 _RUN_ADAPTER = TypeAdapter(RepairRunResult)
 
 
@@ -22,25 +24,50 @@ def _payload(result: RepairRunResult) -> str:
     )
 
 
-def _legacy_payload(result: RepairRunResult) -> str:
+def _legacy_payload(
+    result: RepairRunResult, *, omit_candidate_artifact: bool,
+) -> str:
     payload = result.model_dump(mode="json")
+    payload.pop("assessment", None)
     for attempt in payload["attempts"]:
-        attempt.pop("candidate_artifact", None)
+        attempt.pop("assessment", None)
+        attempt.pop("edit_artifact", None)
+        if omit_candidate_artifact:
+            attempt.pop("candidate_artifact", None)
+    return json.dumps(
+        payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+    )
+
+
+def _v1_payload(result: RepairRunResult) -> str:
+    payload = result.model_dump(mode="json")
+    payload.pop("assessment", None)
+    for attempt in payload["attempts"]:
+        attempt.pop("assessment", None)
     return json.dumps(
         payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"),
     )
 
 
 class RepairRunEnvelope(StrictModel):
-    schema_version: Literal["gauntlet.repair-run.v1"]
+    schema_version: Literal["gauntlet.repair-run.v1", "gauntlet.repair-run.v2"]
     result: RepairRunResult
     result_digest: str
 
     @model_validator(mode="after")
     def valid_integrity(self) -> "RepairRunEnvelope":
         expected = hashlib.sha256(_payload(self.result).encode()).hexdigest()
-        legacy_expected = hashlib.sha256(_legacy_payload(self.result).encode()).hexdigest()
-        if self.result_digest not in {expected, legacy_expected}:
+        legacy_expected = {
+            hashlib.sha256(_v1_payload(self.result).encode()).hexdigest(),
+            hashlib.sha256(_legacy_payload(
+                self.result, omit_candidate_artifact=False
+            ).encode()).hexdigest(),
+            hashlib.sha256(_legacy_payload(
+                self.result, omit_candidate_artifact=True
+            ).encode()).hexdigest(),
+        }
+        allowed = {expected} if self.schema_version == RUN_EVIDENCE_SCHEMA_VERSION else legacy_expected
+        if self.result_digest not in allowed:
             raise ValueError("Repair run evidence integrity failed: result_digest")
         return self
 
@@ -63,6 +90,26 @@ def load_repair_run(path: Path) -> RepairRunResult:
     result = _RUN_ADAPTER.validate_python(envelope.result)
     root = path.parent.resolve()
     for attempt in result.attempts:
+        edit_reference = attempt.edit_artifact
+        if edit_reference is not None:
+            edit_artifact_path = (root / edit_reference.path).resolve()
+            if not edit_artifact_path.is_relative_to(root):
+                raise ValueError("Edit artifact reference escapes run evidence root")
+            edit_artifact = load_validated_edit_artifact(edit_artifact_path)
+            if (
+                edit_artifact.schema_version != edit_reference.schema_version
+                or edit_artifact.edit_id != edit_reference.edit_id
+                or edit_artifact.originating_attempt
+                != edit_reference.originating_attempt
+                or edit_artifact.edit_candidate_digest
+                != edit_reference.edit_candidate_digest
+                or edit_artifact.integrity_digest
+                != edit_reference.integrity_digest
+                or edit_artifact.run_id != result.run_id
+                or edit_artifact.trace_id != result.trace_id
+                or edit_artifact.boundary_id != result.boundary_id
+            ):
+                raise ValueError("Repair run edit artifact linkage failed")
         reference = attempt.candidate_artifact
         if reference is None:
             continue

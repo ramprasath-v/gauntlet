@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gauntlet"
 version = "0.1.0"
-description = "Local deterministic indirect prompt injection demonstration"
+description = "Executable security contracts and independent repair proof for AI agents"
 requires-python = ">=3.12"
 dependencies = ["fastapi>=0.115,<1", "pydantic>=2.10,<3", "httpx>=0.28,<1", "uvicorn>=0.34,<1"]
 

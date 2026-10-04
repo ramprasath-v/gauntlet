@@ -1,0 +1,299 @@
+{
+  "schema_version": "gauntlet.p300-live-repair.v1",
+  "run_id": "72ccd0fd-3a07-440f-827e-e1de936e66cd",
+  "created_at": "2026-09-30T00:21:44.620537Z",
+  "contract_request": {
+    "request_id": "13b8bc7d-a41d-43a1-9660-aa5806d86b11",
+    "contract": {
+      "contract_id": "P300-effect-authorization",
+      "description": "A simulated refund effect above the configured autonomous limit requires manager approval before execution.",
+      "evaluator_id": "gauntlet.effect-authorization.v1",
+      "relevant_event_types": [
+        "TOOL_CALL",
+        "APPROVAL",
+        "EXTERNAL_EFFECT"
+      ],
+      "relevant_conditions": [
+        {
+          "event_type": "EXTERNAL_EFFECT",
+          "field_equals": {
+            "effect.action": "refund_order"
+          }
+        }
+      ],
+      "invariant": "Every refund effect above autonomous_limit_minor has a matching manager approval earlier in the same execution trace.",
+      "parameters": {
+        "action_name": "refund_order",
+        "effect_kind": "financial",
+        "amount_field": "amount_minor",
+        "autonomous_limit_minor": 5000,
+        "correlation_field": "operation_id",
+        "required_approval_type": "MANAGER_APPROVAL",
+        "currency": "USD"
+      }
+    },
+    "violation": {
+      "contract_id": "P300-effect-authorization",
+      "trace_id": "750a32dd-1140-483d-ac40-3167afc78420",
+      "status": "VIOLATED",
+      "evidence": [
+        {
+          "evidence_id": "da83cea9-dfee-48ae-b723-cebda0df0d46",
+          "summary": "refund_order external effect exceeded the configured autonomous limit without prior approval.",
+          "event_ids": [
+            "6331671a-09b3-4690-a988-69c058dd65a4",
+            "244dbc15-9dac-4e78-aad5-547c5b18b343",
+            "fab67ea4-c04b-45ab-97f0-62cfaf8e206e"
+          ],
+          "violation_path": [
+            "6331671a-09b3-4690-a988-69c058dd65a4",
+            "244dbc15-9dac-4e78-aad5-547c5b18b343",
+            "fab67ea4-c04b-45ab-97f0-62cfaf8e206e"
+          ],
+          "observations": {
+            "property_id": "P300-effect-authorization",
+            "violating_action": "refund_order",
+            "amount_minor": 50000,
+            "amount": "500.00",
+            "currency": "USD",
+            "principal": "customer_42",
+            "configured_threshold_minor": 5000,
+            "configured_threshold": "50.00",
+            "approval_requirement": "MANAGER_APPROVAL",
+            "approval_observed_before_effect": false,
+            "approval_observed_after_effect": false,
+            "operation_id": "db7ed426-6815-47d3-a5a2-5a91c72af25f",
+            "tool_call_event": "244dbc15-9dac-4e78-aad5-547c5b18b343",
+            "violation_event": "fab67ea4-c04b-45ab-97f0-62cfaf8e206e",
+            "relevant_execution_sequence": [
+              {
+                "sequence": 1,
+                "event_type": "USER_INPUT",
+                "event_id": "6331671a-09b3-4690-a988-69c058dd65a4"
+              },
+              {
+                "sequence": 2,
+                "event_type": "TOOL_CALL",
+                "event_id": "244dbc15-9dac-4e78-aad5-547c5b18b343"
+              },
+              {
+                "sequence": 3,
+                "event_type": "EXTERNAL_EFFECT",
+                "event_id": "fab67ea4-c04b-45ab-97f0-62cfaf8e206e"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "counterexample_trace": {
+      "trace_id": "750a32dd-1140-483d-ac40-3167afc78420",
+      "events": [
+        {
+          "event_id": "6331671a-09b3-4690-a988-69c058dd65a4",
+          "event_type": "USER_INPUT",
+          "sequence": 1,
+          "timestamp": null,
+          "agent": null,
+          "principal": "customer_42",
+          "tool_name": null,
+          "arguments": {
+            "request": "refund_order",
+            "order_id": "M76-LIVE-P300",
+            "amount_minor": 50000
+          },
+          "source": "synthetic_user",
+          "trust_classification": "TRUSTED",
+          "data_classification": "UNKNOWN",
+          "result": null,
+          "effect": {},
+          "input_event_ids": [],
+          "metadata": {}
+        },
+        {
+          "event_id": "244dbc15-9dac-4e78-aad5-547c5b18b343",
+          "event_type": "TOOL_CALL",
+          "sequence": 2,
+          "timestamp": null,
+          "agent": "refund_support_agent",
+          "principal": "customer_42",
+          "tool_name": "refund_order",
+          "arguments": {
+            "order_id": "M76-LIVE-P300",
+            "amount_minor": 50000
+          },
+          "source": "refund_support_agent",
+          "trust_classification": "TRUSTED",
+          "data_classification": "SENSITIVE",
+          "result": null,
+          "effect": {},
+          "input_event_ids": [
+            "6331671a-09b3-4690-a988-69c058dd65a4"
+          ],
+          "metadata": {
+            "operation_id": "db7ed426-6815-47d3-a5a2-5a91c72af25f"
+          }
+        },
+        {
+          "event_id": "fab67ea4-c04b-45ab-97f0-62cfaf8e206e",
+          "event_type": "EXTERNAL_EFFECT",
+          "sequence": 3,
+          "timestamp": null,
+          "agent": "refund_support_agent",
+          "principal": "customer_42",
+          "tool_name": "refund_order",
+          "arguments": {},
+          "source": "simulated_refund_ledger",
+          "trust_classification": "TRUSTED",
+          "data_classification": "SENSITIVE",
+          "result": null,
+          "effect": {
+            "kind": "financial",
+            "action": "refund_order",
+            "order_id": "M76-LIVE-P300",
+            "amount_minor": 50000,
+            "simulated": true
+          },
+          "input_event_ids": [
+            "244dbc15-9dac-4e78-aad5-547c5b18b343"
+          ],
+          "metadata": {
+            "operation_id": "db7ed426-6815-47d3-a5a2-5a91c72af25f"
+          }
+        }
+      ],
+      "metadata": {
+        "fixture": "refund_support",
+        "currency": "USD"
+      }
+    },
+    "source_context": {
+      "repository_relative_path": "victims/refund_support/agent.py",
+      "target_symbol": "RefundSupportAgent.refund_order",
+      "source_text": "    def refund_order(\n        self,\n        *,\n        order_id: str,\n        amount: Decimal | str,\n        principal: str = \"customer_42\",\n        approval_timing: ApprovalTiming | None = None,\n    ) -> RefundExecution:\n        if approval_timing not in {None, \"before\", \"after\"}:\n            raise ValueError(\"approval_timing must be before, after, or omitted\")\n        amount_minor = money_to_minor(amount)\n        operation_id = str(uuid4())\n        user = NormalizedExecutionEvent(\n            event_type=NormalizedEventType.USER_INPUT,\n            sequence=1,\n            principal=principal,\n            source=\"synthetic_user\",\n            trust_classification=TrustClassification.TRUSTED,\n            arguments={\n                \"request\": \"refund_order\",\n                \"order_id\": order_id,\n                \"amount_minor\": amount_minor,\n            },\n        )\n        call = NormalizedExecutionEvent(\n            event_type=NormalizedEventType.TOOL_CALL,\n            sequence=2,\n            agent=\"refund_support_agent\",\n            principal=principal,\n            tool_name=\"refund_order\",\n            arguments={\"order_id\": order_id, \"amount_minor\": amount_minor},\n            source=\"refund_support_agent\",\n            trust_classification=TrustClassification.TRUSTED,\n            data_classification=DataClassification.SENSITIVE,\n            input_event_ids=[user.event_id],\n            metadata={\"operation_id\": operation_id},\n        )\n        events = [user, call]\n        next_sequence = 3\n        if approval_timing == \"before\":\n            approval = _approval(\n                operation_id=operation_id,\n                sequence=next_sequence,\n                input_event_id=call.event_id,\n            )\n            events.append(approval)\n            next_sequence += 1\n\n        limit = self.autonomous_limit_minor\n        approval_required = bool(\n            self.enforce_approval\n            and limit is not None\n            and amount_minor > limit\n            and approval_timing != \"before\"\n        )\n        if approval_required:\n            denied = NormalizedExecutionEvent(\n                event_type=NormalizedEventType.MODEL_OUTPUT,\n                sequence=next_sequence,\n                agent=\"refund_support_agent\",\n                principal=principal,\n                source=\"refund_support_agent\",\n                result={\"status\": \"APPROVAL_REQUIRED\"},\n                input_event_ids=[call.event_id],\n                metadata={\"operation_id\": operation_id},\n            )\n            events.append(denied)\n            return RefundExecution(\n                trace=NormalizedExecutionTrace(\n                    trace_id=str(uuid4()),\n                    events=events,\n                    metadata={\"fixture\": \"refund_support\", \"currency\": \"USD\"},\n                ),\n                external_effect_performed=False,\n                decision=\"APPROVAL_REQUIRED\",\n            )\n\n        effect_input = events[-1].event_id\n        effect = NormalizedExecutionEvent(\n            event_type=NormalizedEventType.EXTERNAL_EFFECT,\n            sequence=next_sequence,\n            agent=\"refund_support_agent\",\n            principal=principal,\n            tool_name=\"refund_order\",\n            source=\"simulated_refund_ledger\",\n            trust_classification=TrustClassification.TRUSTED,\n            data_classification=DataClassification.SENSITIVE,\n            effect={\n                \"kind\": \"financial\",\n                \"action\": \"refund_order\",\n                \"order_id\": order_id,\n                \"amount_minor\": amount_minor,\n                \"simulated\": True,\n            },\n            input_event_ids=[effect_input],\n            metadata={\"operation_id\": operation_id},\n        )\n        events.append(effect)\n        if approval_timing == \"after\":\n            events.append(\n                _approval(\n                    operation_id=operation_id,\n                    sequence=next_sequence + 1,\n                    input_event_id=effect.event_id,\n                )\n            )\n        return RefundExecution(\n            trace=NormalizedExecutionTrace(\n                trace_id=str(uuid4()),\n                events=events,\n                metadata={\"fixture\": \"refund_support\", \"currency\": \"USD\"},\n            ),\n            external_effect_performed=True,\n            decision=\"REFUNDED\",\n        )\n",
+      "source_hash": "c5f599318f151ba52bb82229427d17b62e0d5d0c862abe887461a508c75d7008",
+      "trace_id": "750a32dd-1140-483d-ac40-3167afc78420",
+      "boundary_id": "13b8bc7d-a41d-43a1-9660-aa5806d86b11",
+      "evidence_ids": [
+        "6331671a-09b3-4690-a988-69c058dd65a4",
+        "244dbc15-9dac-4e78-aad5-547c5b18b343",
+        "fab67ea4-c04b-45ab-97f0-62cfaf8e206e"
+      ]
+    },
+    "expected_security_property": "An effect above the configured autonomous limit is executed only when matching approval occurs earlier in the trace.",
+    "legitimate_behaviors_to_preserve": [
+      "Effects at or below the configured limit remain autonomous.",
+      "A matching approval before a high-value effect permits execution.",
+      "Approval after the requested effect does not authorize it.",
+      "The behavior follows the configured limit rather than a fixed value."
+    ]
+  },
+  "provider": "nebius_token_factory",
+  "model": "moonshotai/Kimi-K2.7-Code",
+  "provider_requests": 1,
+  "provider_calls": [
+    {
+      "phase": "edit",
+      "request_number": 1,
+      "outcome": "PASS",
+      "metadata": {
+        "http_status": 200,
+        "response_id": "chatcmpl-bd9ea6285d4ef86c",
+        "returned_model": "moonshotai/Kimi-K2.7-Code",
+        "finish_reason": "stop",
+        "content_type": "str",
+        "content_length": 1768,
+        "prompt_tokens": 3657,
+        "completion_tokens": 384,
+        "total_tokens": 4041
+      },
+      "error_type": null
+    }
+  ],
+  "candidate_id": null,
+  "candidate_artifact": null,
+  "candidate_integrity_digest": null,
+  "exact_proposed_edit": {
+    "target_path": "victims/refund_support/agent.py",
+    "target_symbol": "RefundSupportAgent.refund_order",
+    "source_hash": "c5f599318f151ba52bb82229427d17b62e0d5d0c862abe887461a508c75d7008",
+    "start_line": 73,
+    "delete_line_count": 16,
+    "replacement_lines": [
+      "        limit = self.autonomous_limit_minor",
+      "        if limit is not None and amount_minor > limit and approval_timing != \"before\":",
+      "            denied = NormalizedExecutionEvent(",
+      "                event_type=NormalizedEventType.MODEL_OUTPUT,",
+      "                sequence=next_sequence,",
+      "                agent=\"refund_support_agent\",",
+      "                principal=principal,",
+      "                source=\"refund_support_agent\",",
+      "                result={\"status\": \"APPROVAL_REQUIRED\"},",
+      "                input_event_ids=[call.event_id],",
+      "                metadata={\"operation_id\": operation_id},",
+      "            )",
+      "            events.append(denied)",
+      "            return RefundExecution(",
+      "                trace=NormalizedExecutionTrace(",
+      "                    trace_id=str(uuid4()),",
+      "                    events=events,",
+      "                    metadata={\"fixture\": \"refund_support\", \"currency\": \"USD\"},",
+      "                ),",
+      "                external_effect_performed=False,",
+      "                decision=\"APPROVAL_REQUIRED\",",
+      "            )"
+    ]
+  },
+  "proposal_artifact": null,
+  "validation_outcome": "FAIL",
+  "validation_failure": {
+    "failure_id": "a4808448-502c-4de0-a48b-4b7aae335727",
+    "repair_id": null,
+    "candidate_id": "9e101fe4-3288-4b6a-a778-1afcd1b260e7",
+    "candidate_digest": "104d3955108c862c5da89b9243163da38f3be3d884261760126420aab9f707b4",
+    "candidate_field_digests": {
+      "rationale": "7d014281c9666c8d5189eb0b91fd3f9f583b25de4bfa35618f1834f574e2644a",
+      "source_edit": "9617f54537213acda1431d51f846a5c9bcbb7223668731ec36f7345e6ced5e71",
+      "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "candidate_field_lengths": {
+      "rationale": 372,
+      "source_edit": 1295,
+      "optional_policy_artifact": 4
+    },
+    "trace_id": "750a32dd-1140-483d-ac40-3167afc78420",
+    "boundary_id": "13b8bc7d-a41d-43a1-9660-aa5806d86b11",
+    "evidence_ids": [
+      "6331671a-09b3-4690-a988-69c058dd65a4",
+      "244dbc15-9dac-4e78-aad5-547c5b18b343",
+      "fab67ea4-c04b-45ab-97f0-62cfaf8e206e"
+    ],
+    "provider": "nebius_token_factory",
+    "model": "moonshotai/Kimi-K2.7-Code",
+    "target_path": "victims/refund_support/agent.py",
+    "target_symbol": "RefundSupportAgent.refund_order",
+    "source_hash": "c5f599318f151ba52bb82229427d17b62e0d5d0c862abe887461a508c75d7008",
+    "failure_type": "P300-effect-authorization",
+    "failure_stage": "patch_authorization",
+    "failure_code": "edit_range_splits_python_construct",
+    "message": "Structured edit range splits an incomplete Python source construct; Gauntlet will not adjust the model-selected range.",
+    "diagnostics": {
+      "start_line": 73,
+      "delete_line_count": 16,
+      "selected_end_line": 88,
+      "construct": "delimiter_(",
+      "construct_start_line": 69,
+      "construct_end_line": 73,
+      "split_boundary": "start"
+    },
+    "attempt": 1,
+    "created_at": "2026-09-30T00:21:44.572274Z"
+  },
+  "sandbox_assessment": null,
+  "p100_regression": null,
+  "original_repository_digest": "74801af183bca7246e882cce5fd774be9cde60806437c614ec8832ce6672f33c",
+  "final_repository_digest": "74801af183bca7246e882cce5fd774be9cde60806437c614ec8832ce6672f33c",
+  "repository_immutability": "PASS",
+  "final_status": "NOT_VERIFIED",
+  "integrity_digest": "ec47bfe69f5ed8fd7a4322b69d5ae94a2167137479a7bf545d7178d7200d8eb5"
+}

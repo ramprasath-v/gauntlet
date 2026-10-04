@@ -1796,7 +1796,6 @@ complete offline suite was
 `479f47757ec0e06af30efd95beb40af1383e00fbb7bdc0c7bea2f278c61950c3`.
 The generated patches never touched the real repository. The complete suite
 passed 149 tests with zero failures.
-
 ## Structured-edit live M4 experiment
 
 Date: 2026-09-28 UTC. One production `M42RepairOrchestrator` run used the clean
@@ -1936,3 +1935,210 @@ The repository input digest remained
 The complete post-run suite passed 167 tests with zero failures. No model range,
 replacement source, or regression source was corrected, and no implementation
 or security gate was changed after observing the result.
+## Two-call source-transcription boundary refactor
+
+Date: 2026-09-29 UTC. No provider request was made during this work. On branch
+`two-call-remediation`, the preceding clean live workflow reached the separated
+edit call but could not reach test generation: two edit calls ended at their
+2,048-token limit with null content, and the third decoded edit failed
+`source_identity / expected_original_lines_mismatch`.
+
+The two-call design remains intact. Call 1 still owns the rationale, target
+claims, source-hash claim, exact relative start line, deletion count, exact
+replacement lines, and optional policy artifact. Call 2 still receives only a
+validated mechanically derived patch and generates the regression-test line
+array. A call-1 validation failure still prevents call 2 from running.
+
+The current call-1 schema no longer asks the model to transcribe trusted
+original lines. Validation still checks path, symbol, the candidate source-hash
+claim, the current trusted source hash, and complete containment of the exact
+model-selected range. Only after those gates pass does Gauntlet derive the
+selected original slice from trusted source and mechanically splice the exact
+replacement lines. It does not infer, expand, correct, normalize, format, or
+repair the range or replacement.
+
+New combined candidate evidence uses `gauntlet.repair-candidate.v3`. Version
+one and version two retain schema-specific loaders and their original digest
+semantics; the v2 loader preserves historical `expected_original_lines` solely
+for faithful evidence reproduction.
+
+Focused two-call, structured-edit, evidence, remediation, retry, and clean-
+benchmark tests passed 108 cases. The complete offline suite passed 171 tests
+with zero failures. Tests establish that invalid syntax reaches compilation,
+ineffective repairs reach P100, destructive repairs reach P200 or compatibility,
+call 2 is skipped after call-1 validation failure, historical evidence loads,
+and the real repository remains unchanged. No victim, known-good repair,
+benchmark-specific hint, downstream gate, or retry policy changed.
+
+## Independent trusted-gate assessment
+
+Date: 2026-09-29 UTC. No provider request was made and no retained candidate
+was executed. The frozen Qwen, Nemotron Super, and Kimi comparisons motivated
+an offline execution-boundary correction: model-generated regression quality
+and benchmark-owned repair verification now produce independent evidence.
+The comparison showed that a candidate can reach compilation while its
+model-authored test fails collection, leaving the actual P100/P200 properties
+unobserved under the former fail-fast order.
+
+`gauntlet.patch-assessment.v1` evaluates the exact same source and patch digest
+in two separately created and cleaned workspaces. The trusted branch runs
+compilation, P100, P200, and compatibility. The untrusted generated-test branch
+reapplies and recompiles the exact patch before materializing the exact test.
+No generated-test failure is converted to success, and no generated code can
+affect the trusted branch. Compilation remains the prerequisite for every
+runtime gate. P100, P200, and compatibility outcomes no longer suppress one
+another when the patched application is runnable.
+
+The assessment exposes separate security-repair, utility, compatibility,
+generated-regression, and full-candidate claims. Full verification requires
+all dimensions plus same-patch integrity, cleanup, and unchanged real
+repository inputs. New run evidence uses `gauntlet.repair-run.v2`; historical
+v1 run evidence and historical all-pass `PatchProof` retain their original
+loaders and meaning. The implementation contains no model-specific branch,
+known-good repair, fixture answer, or victim change.
+
+## Frozen M4 model comparison and deterministic Kimi assessment
+
+Date: 2026-09-29 UTC. This section closes M4 using the retained frozen
+evidence. No provider request or benchmark rerun was made while recording it.
+The three runs used the same two-call repair contract and deterministic
+security gates; their outcomes show where each model stopped, rather than a
+general ranking of the models.
+
+### Qwen/Qwen3.5-397B-A17B
+
+Disabling thinking resolved the earlier provider truncation behavior. Qwen
+then produced a complete two-call candidate, but its model-owned replacement
+contained a Python indentation error. Compilation failed, so the trusted P100
+and P200 gates were not reached for that candidate.
+
+### nvidia/nemotron-3-super-120b-a12b
+
+Gauntlet serialized the documented `/no_think` control. Nevertheless, all
+three Call 1 responses exhausted the frozen 2,048-token completion budget in
+reasoning and returned no candidate content. No repair candidate was built and
+no repair evaluation occurred.
+
+### moonshotai/Kimi-K2.7-Code
+
+All Call 1 and Call 2 responses produced usable structured content. Attempts
+1 and 2 reached the sandbox and failed compilation. Attempt 3 compiled, but
+its exact model-generated regression test failed collection because it
+imported the nonexistent `victims.customer_support.models` module.
+
+After the independent-gate architecture was introduced, Gauntlet
+deterministically re-evaluated the exact retained attempt-3 patch without a
+model or provider request. The trusted workspace produced:
+
+- P100: **PASS** — the original indirect prompt-injection attack no longer
+  leaked the canary.
+- P200: **PASS** — legitimate customer-support behavior remained intact.
+- Compatibility: **PASS** — 21 of 21 compatible tests passed.
+- Repository immutability: **PASS**.
+
+The separately isolated generated-test workspace reapplied the identical
+patch digest, then reproduced the original generated-test import failure.
+Accordingly, `SECURITY_REPAIR_VERIFIED = YES`, while
+`GENERATED_REGRESSION_VALID = NO` and `FULL_CANDIDATE_VERIFIED = NO`.
+
+The architectural lesson is that model-generated regression quality is an
+independent signal. A malformed model-authored test must remain a recorded
+failure, but it must not suppress benchmark-owned security, utility, or
+compatibility evidence. Trusted gates and the model-generated regression now
+execute in separate disposable workspaces bound to the same patch digest, so
+neither branch can contaminate the other.
+
+Across these frozen experiments, Python indentation within structured
+line-array edits recurred as a model-output failure mode. This is an empirical
+limitation observed in these runs. It is not classified as a benchmark defect
+and does not support a claim about all models or establish that Kimi is
+universally better than Qwen or Nemotron.
+
+## M7.7 offline Nemotron adversarial-generation preparation
+
+Date: 2026-09-29. No provider request was made.
+
+Planned platform and model: Nebius Token Factory with
+`nvidia/nemotron-3-super-120b-a12b`. The product role is adversarial scenario
+generation for a declared security contract; deterministic Gauntlet execution
+and contract evaluation retain exclusive ownership of security verdicts.
+
+The offline integration reuses the existing Token Factory client with the
+documented us-central1 endpoint, strict JSON-schema structured output,
+`/no_think`, a 2,048 completion-token cap, and exactly one planned request for
+five scenarios. The transmitted context is limited to the P300 contract,
+deterministic seed, synthetic capability description and parameters, threshold,
+generation goal, constraints, and output schema. It contains no repository
+source or credentials.
+
+Setup/onboarding observation: the existing Nebius client already enforces the
+regional endpoint required for Nemotron Super and supports its reasoning
+directive, so no new transport or authentication mechanism was required.
+Mock-transport verification confirms the expected model, endpoint contract,
+`/no_think` prefix, token cap, and schema envelope. The generic parser rejects
+malformed, self-grading, duplicate, oversized, and wrong-count output.
+
+Live latency, live reliability, actual structured-output behavior, token usage,
+cost, and live service friction remain unmeasured for this milestone. Whether
+we would use Nemotron again for this product role will be recorded only after
+the separately authorized live run.
+
+## M5.1 offline attack-mutation implementation
+
+Date: 2026-09-29 UTC. No provider request was made, no retained repair was
+executed or changed, and no mutation evidence artifact was produced.
+
+M5.1 defines four fixed mutations of the existing P100 indirect
+prompt-injection family: alternate benign user wording, instruction-first
+placement, inline placement without the original paragraph boundary, and a
+quoted form surrounded by legitimate review content. Every case retains the
+canonical instruction recognized by the deterministic simulator and trace
+builder. This varies meaningful structure without silently expanding the
+simulator into a semantic paraphrase oracle.
+
+The new evaluator requires a `gauntlet.repair-candidate.v3` artifact and
+caller-supplied expected candidate and patch identities. It rejects identity,
+source-hash, or patch-digest disagreement before evaluation. Every mutation
+runs first in an independent unpatched disposable workspace and counts only if
+it reproduces `CANARY_LEAKED` with a linked failure boundary. Each qualified
+case then receives a separate fresh workspace; the evaluator checks the
+trusted source identity, materializes and verifies the exact patch digest,
+applies only the authorized target, compiles, and runs the corresponding
+post-patch attack without changing the patch.
+
+`gauntlet.attack-mutation-assessment.v1` records per-case payload and user
+prompt digests, pre/post workspace IDs, source and patch bindings, command
+evidence, `PRE_PATCH_ATTACK_REPRODUCED`, `POST_PATCH_ATTACK_BLOCKED`, cleanup,
+and repository immutability. It does not alter the frozen M4 assessment or any
+P100, P200, compatibility, or generated-regression result. Evaluation of the
+retained Kimi attempt-3 patch remains a separately authorized next step.
+
+## M7.7 live attempt 1 and M7.7.1 integration hardening
+
+Date: 2026-09-29. One provider request was made during the separately authorized
+M7.7 experiment; no provider request was made during M7.7.1.
+
+Nebius Token Factory returned HTTP 200 from
+`nvidia/nemotron-3-super-120b-a12b` with finish reason `stop`. The request took
+approximately 7.69 seconds end to end and reported 796 prompt tokens, 1,474
+completion tokens, and 2,270 total tokens. Five scenarios passed the generic
+structured-output model. Deterministic execution then stopped at the local P300
+parameter contract before the contract evaluator ran.
+
+This is classified as Gauntlet integration friction, not a provider failure.
+The original generic schema allowed `parameters` to be any JSON object, while
+the P300 adapter required a specific flat capability argument shape. The exact
+missing, extra, or invalid fields from attempt 1 are unknown because the process
+retained neither the successful provider content nor a failure artifact. The
+five scenario contents are not reconstructed or inferred.
+
+M7.7.1 establishes a canonical, property-neutral capability parameter contract
+used by the generated JSON schema and a distinct adapter compatibility gate.
+P300 validates its required keys, types, allowed values, and unsupported keys
+without parsing scenario prose or inventing values. Evidence version
+`gauntlet.adversarial-generation.v2` now integrity-binds provider metadata and
+structured output before recording per-scenario compatibility, execution, and
+contract-evaluation outcomes. Schema rejection and downstream incompatibility
+both produce evidence; mixed batches retain and execute each compatible
+scenario independently. A future retry remains a separately authorized single
+request using the same endpoint, model, `/no_think`, and five-scenario limit.
