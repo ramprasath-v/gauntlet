@@ -265,14 +265,107 @@ async def test_product_flow_page_loads_and_communicates_demo_scope():
 async def test_multi_scenario_navigation_and_tools_are_rendered():
     page = (await get(create_m8_demo_app(ROOT), "/")).text
 
-    assert "Untrusted Review / Data → Authority" in page
-    assert "Refund Authority / Effect Authorization" in page
     assert "Personalization Provenance" in page
+    assert "Untrusted Data" in page
+    assert "Effect Authority" in page
+    assert "Can personal context cross the wrong boundary?" in page
+    assert "Can external data become authority?" in page
+    assert "Can an agent do more than allowed?" in page
     assert "Available Tools / Capabilities" in page
     assert "search_reviews(query)" in page
     assert "get_order(order_id)" in page
     assert "send_email(to, body)" in page
     assert "<details class=\"tools\"" in page
+
+
+async def test_p400_is_first_and_selected_by_default():
+    page = (await get(create_m8_demo_app(ROOT), "/")).text
+    scenario_grid = page.split('<section class="scenario-grid">', 1)[1]
+    scenario_grid = scenario_grid.split("</section>", 1)[0]
+
+    assert scenario_grid.index('data-target="p400"') < scenario_grid.index(
+        'data-target="p100"'
+    )
+    assert scenario_grid.index('data-target="p100"') < scenario_grid.index(
+        'data-target="p300"'
+    )
+    assert '<article class="card scenario-card selected" data-target="p400">' in page
+    assert '<section class="panel active" id="p400">' in page
+    assert '<section class="panel" id="p100">' in page
+    assert '<section class="panel" id="p300">' in page
+    assert 'class="nav-btn active" data-target="p400"' in page
+    assert "qa('[data-target]').forEach" in page
+    assert "select(x.dataset.target)" in page
+
+
+async def test_live_progress_is_stage_based_locked_and_truthful():
+    page = (await get(create_m8_demo_app(ROOT), "/")).text
+
+    assert "@keyframes gauntlet-progress" in page
+    assert "const liveOperations=new Set()" in page
+    assert "if(liveOperations.has(key))return false" in page
+    assert "root.className='progress show running'" in page
+    assert "root.classList.remove('running')" in page
+    assert "LIVE CALL FAILED" in page
+    assert "aria-valuenow" not in page
+    assert "% complete" not in page
+
+    assert "LIVE ATTACK · NVIDIA NEMOTRON" in page
+    assert "Preparing personal context" in page
+    assert "Sending request to Nebius Token Factory" in page
+    assert "Waiting for NVIDIA Nemotron" in page
+    assert "Capturing execution trace" in page
+    assert "Evaluating personalization contract" in page
+
+    assert "LIVE PATCH · KIMI-K2.7-CODE" in page
+    assert "Building ContractRepairRequest" in page
+    assert "Waiting for Kimi" in page
+    assert "Validating structured edit" in page
+    assert "Checking source authorization" in page
+    assert "Preparing sandbox verification" in page
+
+    assert "LIVE PROOF · NVIDIA NEMOTRON" in page
+    assert "Applying candidate in disposable sandbox" in page
+    assert "Building repaired model context" in page
+    assert "Sending repaired-agent request to Nebius" in page
+    assert "Evaluating live execution" in page
+    assert "Running P400 proof matrix" in page
+    assert "Calculating final verification result" in page
+
+    for key in ("p300", "p100", "p400-attack", "p400-patch", "p400-proof"):
+        assert f"startLiveProgress('{key}'" in page
+    assert "if(!live)progress.classList.remove('show','running','failed')" in page
+    assert "LOADING RECORDED EVIDENCE…" in page
+    assert "RECORDED EVIDENCE FAILED" in page
+
+
+async def test_live_actions_guard_before_fetch_and_stop_progress_after_result():
+    page = (await get(create_m8_demo_app(ROOT), "/")).text
+
+    attack = page.split("async function runP400LiveAttack()", 1)[1].split(
+        "async function runP400LivePatch()", 1
+    )[0]
+    patch = page.split("async function runP400LivePatch()", 1)[1].split(
+        "async function runP400LiveProof()", 1
+    )[0]
+    proof = page.split("async function runP400LiveProof()", 1)[1].split(
+        "let p400Data=null", 1
+    )[0]
+
+    assert attack.index("startLiveProgress('p400-attack'") < attack.index(
+        "fetch('/api/p400/live-runs'"
+    )
+    assert patch.index("startLiveProgress('p400-patch'") < patch.index("fetch(")
+    assert proof.index("startLiveProgress('p400-proof'") < proof.index("fetch(")
+    assert "attack.disabled=true" in attack
+    assert "patch.disabled=true" in patch
+    assert "proof.disabled=true" in proof
+    assert "finishLiveProgress('p400-attack'" in attack
+    assert "finishLiveProgress('p400-patch'" in patch
+    assert "finishLiveProgress('p400-proof'" in proof
+    assert "error.textContent='LIVE CALL FAILED" in attack
+    assert "error.textContent='LIVE CALL FAILED" in patch
+    assert "error.textContent='LIVE CALL FAILED" in proof
 
 
 async def test_p300_business_rule_and_live_progress_are_explicit():
@@ -757,7 +850,7 @@ async def test_p400_verified_proof_api_is_provider_free_and_complete(monkeypatch
 
 async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     page = (await get(create_m8_demo_app(ROOT), "/")).text
-    p400 = page.split('<section class="panel" id="p400">', 1)[1]
+    p400 = page.split('<section class="panel active" id="p400">', 1)[1]
     p400 = p400.split("<footer", 1)[0]
 
     assert "COMING NEXT" not in p400
