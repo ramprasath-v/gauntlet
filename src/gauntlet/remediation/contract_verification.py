@@ -33,6 +33,22 @@ class ContractVerifier(Protocol):
     async def __call__(self, workspace_root: Path) -> ContractReverification: ...
 
 
+class TrustedGateExecutionError(RuntimeError):
+    """Unexpected trusted-verification failure annotated without changing verdicts."""
+
+    def __init__(self, substage: str, error: Exception) -> None:
+        self.substage = substage
+        self.original_error = error
+        self.original_error_type = type(error).__name__
+        super().__init__(f"{substage}: {error}")
+
+
+def trusted_gate_error(substage: str, error: Exception) -> TrustedGateExecutionError:
+    if isinstance(error, TrustedGateExecutionError):
+        return error
+    return TrustedGateExecutionError(substage, error)
+
+
 class ContractRepairAssessment(StrictModel):
     repair_id: str
     target_path: str
@@ -58,15 +74,19 @@ class ContractRepairExecutor:
     async def run(
         self, proposal: RepairProposal, verifier: ContractVerifier,
     ) -> ContractRepairAssessment:
-        before = repository_digest(self.repository_root)
-        patch_digest = sha256(proposal.patch.encode()).hexdigest()
-        source_identity = "FAIL"
-        application = compilation = None
-        reverification = None
-        verdict = "NOT_VERIFIED"
-        workspace = SandboxWorkspace(self.repository_root)
-        with workspace:
+        substage = "repository_integrity"
+        try:
+            before = repository_digest(self.repository_root)
+            patch_digest = sha256(proposal.patch.encode()).hexdigest()
+            source_identity = "FAIL"
+            application = compilation = None
+            reverification = None
+            verdict = "NOT_VERIFIED"
+            workspace = SandboxWorkspace(self.repository_root)
+            substage = "workspace_create"
+            workspace.create()
             assert workspace.path is not None
+            substage = "source_verify"
             _, source = read_authorized_source_text(
                 workspace.path,
                 target_path=proposal.target_path,
@@ -77,15 +97,30 @@ class ContractRepairExecutor:
                 artifact = workspace.resolve_relative(".gauntlet/contract-repair.patch")
                 artifact.parent.mkdir(parents=True, exist_ok=True)
                 artifact.write_bytes(proposal.patch.encode())
+                substage = "patch_apply"
                 application = await self.runner.apply_patch(workspace, artifact)
                 if application.passed:
+                    substage = "compile"
                     compilation = await self.runner.compile(workspace)
                     if compilation.passed:
+                        substage = "trusted_reverification"
                         reverification = await verifier(workspace.path)
                         if reverification.passed:
                             verdict = "VERIFIED"
+        except Exception as error:
+            raise trusted_gate_error(substage, error) from error
+        finally:
+            substage = "cleanup"
+            try:
+                if "workspace" in locals():
+                    workspace.cleanup()
+            except Exception as error:
+                raise trusted_gate_error(substage, error) from error
         cleanup = "PASS" if workspace.path and not workspace.path.exists() else "FAIL"
-        unchanged = repository_digest(self.repository_root) == before
+        try:
+            unchanged = repository_digest(self.repository_root) == before
+        except Exception as error:
+            raise trusted_gate_error("repository_integrity", error) from error
         return ContractRepairAssessment(
             repair_id=proposal.repair_id,
             target_path=proposal.target_path,

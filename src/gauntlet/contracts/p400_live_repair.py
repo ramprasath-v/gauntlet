@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import sys
 import time
@@ -35,6 +36,7 @@ from gauntlet.contracts.p400_repair import (
     verify_p400_repair,
 )
 from gauntlet.remediation.candidate_artifact import (
+    load_validated_edit_artifact,
     persist_validated_edit_artifact,
 )
 from gauntlet.remediation.contract_handoff import (
@@ -47,6 +49,8 @@ from gauntlet.remediation.contract_verification import (
     ContractRepairExecutor,
     ContractReverification,
     ContractVerificationCase,
+    TrustedGateExecutionError,
+    trusted_gate_error,
 )
 from gauntlet.remediation.models import (
     GeneratedEditCandidate,
@@ -317,10 +321,23 @@ async def run_live_p400_repair(
                         ),
                     )
                 except Exception as error:
+                    diagnostic_error = (
+                        error.original_error
+                        if isinstance(error, TrustedGateExecutionError)
+                        else error
+                    )
                     validation_failure = {
                         "failure_stage": "sandbox_verification",
                         "failure_code": "trusted_gate_exception",
-                        "error_type": type(error).__name__,
+                        "failure_substage": (
+                            error.substage
+                            if isinstance(error, TrustedGateExecutionError)
+                            else "trusted_reverification"
+                        ),
+                        "error_type": type(diagnostic_error).__name__,
+                        "sanitized_error_message": _safe_error_message(
+                            diagnostic_error, credential_values
+                        ),
                     }
 
     after = repository_digest(root)
@@ -386,11 +403,70 @@ async def run_live_p400_repair(
     return evidence, path
 
 
+async def verify_retained_p400_live_repair(
+    *, evidence_path: Path, repository_root: Path,
+) -> ContractRepairAssessment:
+    """Re-run the exact retained patch through the production trusted verifier."""
+    path = evidence_path.resolve(strict=True)
+    evidence = P400LiveRepairEvidence.model_validate_json(path.read_text())
+    if (
+        evidence.candidate_validation != "PASS"
+        or evidence.edit_candidate is None
+        or evidence.edit_artifact is None
+        or evidence.derived_patch is None
+        or evidence.derived_patch_digest is None
+    ):
+        raise ValueError("verify-only requires a retained validated P400 edit")
+    artifact_path = (path.parent / evidence.edit_artifact).resolve(strict=True)
+    if not artifact_path.is_relative_to(path.parent.resolve()):
+        raise ValueError("retained edit artifact escapes its evidence directory")
+    artifact = load_validated_edit_artifact(artifact_path)
+    if (
+        artifact.run_id != evidence.run_id
+        or artifact.edit_candidate() != evidence.edit_candidate
+        or artifact.derived_patch != evidence.derived_patch
+        or artifact.derived_patch_digest != evidence.derived_patch_digest
+        or artifact.source_hash != evidence.contract_request.source_context.source_hash
+        or artifact.target_symbol
+        != evidence.contract_request.source_context.target_symbol
+    ):
+        raise ValueError("retained P400 edit differs from live repair evidence")
+    source = evidence.contract_request.source_context
+    proposal = RepairProposal(
+        rationale=evidence.edit_candidate.rationale,
+        patch=evidence.derived_patch,
+        regression_test=(
+            "def test_p400_candidate_requires_trusted_reverification():\n"
+            "    assert True\n"
+        ),
+        optional_policy_artifact=evidence.edit_candidate.optional_policy_artifact,
+        repair_id=artifact.edit_id,
+        trace_id=source.trace_id,
+        boundary_id=source.boundary_id,
+        evidence_ids=source.evidence_ids,
+        provider=evidence.provider,
+        model=evidence.model,
+        target_path=source.repository_relative_path,
+        target_symbol=source.target_symbol,
+        source_hash=source.source_hash,
+        failure_type=evidence.contract_request.contract.contract_id,
+    )
+    return await ContractRepairExecutor(repository_root).run(
+        proposal,
+        lambda workspace: verify_all_p400_families(
+            workspace, contract=evidence.contract_request.contract
+        ),
+    )
+
+
 async def verify_all_p400_families(
     workspace_root: Path, *, contract: SecurityContract,
 ) -> ContractReverification:
     base = await verify_p400_repair(workspace_root, contract=contract)
-    module = _load_patched_agent(workspace_root)
+    try:
+        module = _load_patched_agent(workspace_root)
+    except Exception as error:
+        raise trusted_gate_error("module_load", error) from error
 
     def memory_case(
         case_id: str,
@@ -431,73 +507,79 @@ async def verify_all_p400_families(
             evaluation=evaluation,
         )
 
-    poisoned_store = PersonalMemoryStore()
-    poison_receipt = poisoned_store.ingest(
-        POISON_INPUT,
-        source_id=POISON_SOURCE_ID,
-        source_trust=TrustClassification.UNTRUSTED,
-        ingestion_run_id="live-repair-poison-ingestion",
-    )
-    poison_contexts = poisoned_store.retrieve(
-        subject_id=CURRENT_USER,
-        personalization_dimension=PREMIUM_DIMENSION,
-    )
-    poison_case = memory_case(
-        "poisoned_personal_context_blocked",
-        contexts=poison_contexts,
-        expected_ids=(),
-    )
-    poison_case = poison_case.model_copy(update={
-        "expected_behavior_observed": (
-            poison_receipt.stored and poison_case.expected_behavior_observed
+    try:
+        poisoned_store = PersonalMemoryStore()
+        poison_receipt = poisoned_store.ingest(
+            POISON_INPUT,
+            source_id=POISON_SOURCE_ID,
+            source_trust=TrustClassification.UNTRUSTED,
+            ingestion_run_id="live-repair-poison-ingestion",
         )
-    })
-
-    authorized_store = PersonalMemoryStore()
-    authorized_receipt = authorized_store.ingest(
-        AUTHORIZED_INPUT,
-        source_id="explicit-user-memory-setting",
-        source_trust=TrustClassification.TRUSTED,
-        ingestion_run_id="live-repair-authorized-ingestion",
-    )
-    authorized_contexts = authorized_store.retrieve(
-        subject_id=CURRENT_USER,
-        personalization_dimension=PREMIUM_DIMENSION,
-    )
-    authorized_case = memory_case(
-        "authorized_persistent_memory_preserved",
-        contexts=authorized_contexts,
-        expected_ids=(AUTHORIZED_INPUT.context_id,),
-    )
-    authorized_case = authorized_case.model_copy(update={
-        "expected_behavior_observed": (
-            authorized_receipt.stored
-            and authorized_case.expected_behavior_observed
+        poison_contexts = poisoned_store.retrieve(
+            subject_id=CURRENT_USER,
+            personalization_dimension=PREMIUM_DIMENSION,
         )
-    })
+        poison_case = memory_case(
+            "poisoned_personal_context_blocked",
+            contexts=poison_contexts,
+            expected_ids=(),
+        )
+        poison_case = poison_case.model_copy(update={
+            "expected_behavior_observed": (
+                poison_receipt.stored and poison_case.expected_behavior_observed
+            )
+        })
+    except Exception as error:
+        raise trusted_gate_error("poisoned_memory_verify", error) from error
 
-    mixed_store = PersonalMemoryStore()
-    mixed_store.ingest(
-        AUTHORIZED_INPUT,
-        source_id="explicit-user-memory-setting",
-        source_trust=TrustClassification.TRUSTED,
-        ingestion_run_id="live-repair-mixed-authorized",
-    )
-    mixed_store.ingest(
-        POISON_INPUT,
-        source_id=POISON_SOURCE_ID,
-        source_trust=TrustClassification.UNTRUSTED,
-        ingestion_run_id="live-repair-mixed-poison",
-    )
-    mixed_contexts = mixed_store.retrieve(
-        subject_id=CURRENT_USER,
-        personalization_dimension=PREMIUM_DIMENSION,
-    )
-    mixed_case = memory_case(
-        "mixed_persistent_memory_filtered_item_by_item",
-        contexts=mixed_contexts,
-        expected_ids=(AUTHORIZED_INPUT.context_id,),
-    )
+    try:
+        authorized_store = PersonalMemoryStore()
+        authorized_receipt = authorized_store.ingest(
+            AUTHORIZED_INPUT,
+            source_id="explicit-user-memory-setting",
+            source_trust=TrustClassification.TRUSTED,
+            ingestion_run_id="live-repair-authorized-ingestion",
+        )
+        authorized_contexts = authorized_store.retrieve(
+            subject_id=CURRENT_USER,
+            personalization_dimension=PREMIUM_DIMENSION,
+        )
+        authorized_case = memory_case(
+            "authorized_persistent_memory_preserved",
+            contexts=authorized_contexts,
+            expected_ids=(AUTHORIZED_INPUT.context_id,),
+        )
+        authorized_case = authorized_case.model_copy(update={
+            "expected_behavior_observed": (
+                authorized_receipt.stored
+                and authorized_case.expected_behavior_observed
+            )
+        })
+
+        mixed_store = PersonalMemoryStore()
+        mixed_store.ingest(
+            AUTHORIZED_INPUT,
+            source_id="explicit-user-memory-setting",
+            source_trust=TrustClassification.TRUSTED,
+            ingestion_run_id="live-repair-mixed-authorized",
+        )
+        mixed_store.ingest(
+            POISON_INPUT,
+            source_id=POISON_SOURCE_ID,
+            source_trust=TrustClassification.UNTRUSTED,
+            ingestion_run_id="live-repair-mixed-poison",
+        )
+        mixed_contexts = mixed_store.retrieve(
+            subject_id=CURRENT_USER,
+            personalization_dimension=PREMIUM_DIMENSION,
+        )
+        mixed_case = memory_case(
+            "mixed_persistent_memory_filtered_item_by_item",
+            contexts=mixed_contexts,
+            expected_ids=(AUTHORIZED_INPUT.context_id,),
+        )
+    except Exception as error:
+        raise trusted_gate_error("utility_verify", error) from error
     return ContractReverification(
         contract_id=contract.contract_id,
         cases=[*base.cases, poison_case, authorized_case, mixed_case],
@@ -528,14 +610,30 @@ def _provider_metadata(provider: P400LiveRepairProvider) -> dict[str, Any] | Non
 
 
 def _safe_error(error: Exception, credentials: tuple[str, ...]) -> str:
+    return f"{type(error).__name__}: {_safe_error_message(error, credentials)}"[:4_000]
+
+
+def _safe_error_message(error: Exception, credentials: tuple[str, ...]) -> str:
     message = str(error)
-    for secret in credentials:
+    environment_secrets = tuple(
+        value for name, value in os.environ.items()
+        if value and any(marker in name.upper() for marker in (
+            "KEY", "TOKEN", "SECRET", "PASSWORD", "AUTHORIZATION",
+        ))
+    )
+    for secret in (*credentials, *environment_secrets):
         if secret:
             message = message.replace(secret, "[REDACTED]")
     message = re.sub(
         r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", message
     )
-    return f"{type(error).__name__}: {message}"[:4_000]
+    message = re.sub(
+        r"(?i)(?:api[_-]?key|access[_-]?token|authorization|password|secret)"
+        r"\s*[:=]\s*[^\s,;]+",
+        "[REDACTED_CREDENTIAL]",
+        message,
+    )
+    return message[:1_000]
 
 
 def _display_path(path: Path, root: Path) -> str:

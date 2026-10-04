@@ -21,6 +21,7 @@ COPY victims ./victims
 COPY sandbox_checks ./sandbox_checks
 COPY tests ./tests
 COPY scripts/run_m8_demo.py ./scripts/run_m8_demo.py
+COPY scripts/run_p400_live_repair.py ./scripts/run_p400_live_repair.py
 COPY evidence ./evidence
 
 RUN python -m pip install --no-cache-dir '.[test]' \

@@ -1,6 +1,8 @@
 from hashlib import sha256
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import httpx
 import pytest
@@ -11,6 +13,7 @@ from gauntlet.contracts.p400_live_repair import (
     build_live_p400_repair_request,
     load_p400_live_attack,
     run_live_p400_repair,
+    verify_retained_p400_live_repair,
 )
 from gauntlet.demo.m8 import run_p400_verified_proof
 from gauntlet.core.config import NebiusConfig
@@ -26,6 +29,7 @@ from gauntlet.remediation.provider import (
     NebiusNemotronRemediationProvider,
 )
 from gauntlet.sandbox.workspace import repository_digest
+from gauntlet.remediation.contract_verification import TrustedGateExecutionError
 
 
 ROOT = Path(__file__).parents[1]
@@ -290,6 +294,104 @@ async def test_dimension_only_patch_fails_the_complete_p400_contract(tmp_path):
     ):
         assert not cases[case_id].expected_behavior_observed
     assert evidence.live_repair_status == "REJECTED"
+
+
+async def test_trusted_gate_exception_retains_candidate_and_sanitized_substage(
+    tmp_path, monkeypatch,
+):
+    secret = "diagnostic-secret-that-must-not-survive"
+    artifact_was_present = False
+
+    async def fail_poisoned_memory(workspace, *, contract):
+        nonlocal artifact_was_present
+        artifact_was_present = any(tmp_path.glob("live-*.edits/*.json"))
+        raise TrustedGateExecutionError(
+            "poisoned_memory_verify",
+            RuntimeError(f"memory adapter failed with api_key={secret}"),
+        )
+
+    monkeypatch.setattr(
+        "gauntlet.contracts.p400_live_repair.verify_all_p400_families",
+        fail_poisoned_memory,
+    )
+    provider = CandidateProvider()
+    evidence, path = await run_live_p400_repair(
+        live_attack_path=LIVE_ATTACK,
+        provider=provider,
+        repository_root=ROOT,
+        evidence_directory=tmp_path,
+        credential_values=(secret,),
+    )
+
+    failure = evidence.validation_failure
+    assert artifact_was_present
+    assert evidence.edit_candidate is not None
+    assert evidence.derived_patch is not None
+    assert evidence.edit_artifact is not None
+    assert (tmp_path / evidence.edit_artifact).is_file()
+    assert failure["failure_stage"] == "sandbox_verification"
+    assert failure["failure_substage"] == "poisoned_memory_verify"
+    assert failure["error_type"] == "RuntimeError"
+    assert failure["sanitized_error_message"] == (
+        "memory adapter failed with [REDACTED_CREDENTIAL]"
+    )
+    assert secret not in path.read_text()
+    assert evidence.sandbox_assessment is None
+    assert evidence.live_repair_status == "REJECTED"
+
+
+async def test_verify_only_reuses_retained_patch_and_production_verifier(
+    tmp_path, monkeypatch,
+):
+    provider, evidence, path = await _run(tmp_path)
+    provider.requests.clear()
+    calls = 0
+    from gauntlet.contracts import p400_live_repair as live_repair_module
+
+    original = live_repair_module.verify_all_p400_families
+
+    async def observed_verifier(workspace, *, contract):
+        nonlocal calls
+        calls += 1
+        return await original(workspace, contract=contract)
+
+    monkeypatch.setattr(live_repair_module, "verify_all_p400_families", observed_verifier)
+    replay = await verify_retained_p400_live_repair(
+        evidence_path=path,
+        repository_root=ROOT,
+    )
+
+    assert provider.requests == []
+    assert calls == 1
+    assert replay.patch_digest == evidence.derived_patch_digest
+    assert replay.verdict == evidence.sandbox_assessment.verdict == "VERIFIED"
+    assert replay.repository_immutability == "PASS"
+
+
+async def test_verify_only_command_runs_without_provider_configuration(tmp_path):
+    _, _, path = await _run(tmp_path)
+    environment = {
+        "PATH": __import__("os").environ.get("PATH", ""),
+        "PYTHONPATH": f"{ROOT / 'src'}:{ROOT}",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run_p400_live_repair.py"),
+            "--candidate-evidence",
+            str(path),
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Provider requests: 0" in completed.stdout
+    assert "Verdict: VERIFIED" in completed.stdout
 
 
 async def test_deterministic_known_good_proof_remains_separate_and_zero_provider(

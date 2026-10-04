@@ -17,6 +17,7 @@ from gauntlet.demo.m8_web import create_m8_demo_app
 from gauntlet.llm.nebius import KIMI_K27_CODE_MODEL, NebiusTokenFactoryClient
 from gauntlet.remediation.models import GeneratedEditCandidate, StructuredSourceEdit
 from gauntlet.remediation.retry_models import SafeProviderCompletion
+from gauntlet.remediation.contract_verification import TrustedGateExecutionError
 from gauntlet.sandbox.workspace import repository_digest
 
 
@@ -269,6 +270,45 @@ async def test_rejected_live_patch_cannot_call_proof(tmp_path):
     )
     assert blocked.status_code == 409
     assert len(proof.requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_trusted_gate_exception_is_exposed_as_sanitized_patch_diagnostic(
+    tmp_path, monkeypatch,
+):
+    async def fail_cross_subject(workspace, *, contract):
+        raise TrustedGateExecutionError(
+            "cross_subject_verify", RuntimeError("sandbox module raised safely")
+        )
+
+    monkeypatch.setattr(
+        "gauntlet.contracts.p400_live_repair.verify_all_p400_families",
+        fail_cross_subject,
+    )
+    attack = FakeNemotron()
+    patch = FakeKimiPatch()
+    app = create_m8_demo_app(
+        ROOT,
+        p400_attack_provider_factory=lambda: (attack, ()),
+        p400_patch_provider_factory=lambda: (patch, ()),
+        p400_live_evidence_directory=tmp_path,
+    )
+    attacked = (await _post(app, "/api/p400/live-runs")).json()
+    response = await _post(
+        app, f"/api/p400/live-runs/{attacked['run_id']}/patch"
+    )
+    assert response.status_code == 200
+    rejected = response.json()
+    assert rejected["candidate_received"] is True
+    assert rejected["candidate_id"]
+    assert rejected["edit_artifact"].endswith(".json")
+    assert rejected["candidate_validation"] == "PASS"
+    assert rejected["accepted_for_verification"] is False
+    assert rejected["failure_stage"] == "sandbox_verification"
+    assert rejected["failure_substage"] == "cross_subject_verify"
+    assert rejected["error_type"] == "RuntimeError"
+    assert rejected["failure_message"] == "sandbox module raised safely"
+    assert len(patch.requests) == 1
 
 
 @pytest.mark.asyncio

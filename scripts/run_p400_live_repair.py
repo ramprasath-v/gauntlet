@@ -7,7 +7,11 @@ import os
 from pathlib import Path
 
 from gauntlet.contracts.p400_live import P400_LIVE_BASE_URL, P400_LIVE_MODEL
-from gauntlet.contracts.p400_live_repair import run_live_p400_repair
+from gauntlet.contracts.p400_live_repair import (
+    _safe_error_message,
+    run_live_p400_repair,
+    verify_retained_p400_live_repair,
+)
 from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import NebiusTokenFactoryClient
 from gauntlet.remediation.provider import NebiusNemotronRemediationProvider
@@ -43,17 +47,51 @@ def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run one no-retry P400 live repair experiment."
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
         "--attack-evidence",
         type=Path,
-        required=True,
         help="Integrity-bound gauntlet.p400-live-detection.v1 artifact",
+    )
+    mode.add_argument(
+        "--candidate-evidence",
+        type=Path,
+        help=(
+            "Integrity-bound gauntlet.p400-live-repair.v1 artifact to verify "
+            "offline without a provider request"
+        ),
     )
     return parser.parse_args()
 
 
 async def main() -> int:
     args = _arguments()
+    if args.candidate_evidence is not None:
+        evidence_path = (
+            args.candidate_evidence
+            if args.candidate_evidence.is_absolute()
+            else ROOT / args.candidate_evidence
+        )
+        try:
+            assessment = await verify_retained_p400_live_repair(
+                evidence_path=evidence_path,
+                repository_root=ROOT,
+            )
+        except Exception as error:
+            substage = getattr(error, "substage", "evidence_load")
+            original = getattr(error, "original_error", error)
+            print("Provider requests: 0")
+            print(f"Failure substage: {substage}")
+            print(f"Error type: {type(original).__name__}")
+            print(f"Error: {_safe_error_message(original, ())}")
+            return 1
+        print("Provider requests: 0")
+        print(f"Verdict: {assessment.verdict}")
+        print(f"Patch digest: {assessment.patch_digest}")
+        print(f"Cleanup: {assessment.cleanup}")
+        print(f"Repository immutability: {assessment.repository_immutability}")
+        return 0 if assessment.verdict == "VERIFIED" else 1
+
     attack_path = (
         args.attack_evidence
         if args.attack_evidence.is_absolute()

@@ -21,6 +21,7 @@ from gauntlet.remediation.contract_handoff import (
 from gauntlet.remediation.contract_verification import (
     ContractReverification,
     ContractVerificationCase,
+    trusted_gate_error,
 )
 from gauntlet.remediation.models import RepairProposal
 from victims.personalization.fixtures import (
@@ -151,17 +152,20 @@ async def verify_p400_repair(
 ) -> ContractReverification:
     module_path = workspace_root / P400_AUTHORIZED_SOURCE.target_path
     module_name = f"gauntlet_p400_workspace_{uuid4().hex}"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("patched P400 fixture could not be loaded")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.modules.pop(module_name, None)
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("patched P400 fixture could not be loaded")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop(module_name, None)
+    except Exception as error:
+        raise trusted_gate_error("module_load", error) from error
 
-    def run_case(
+    def run_case_unannotated(
         case_id: str,
         *,
         context_items,
@@ -210,6 +214,23 @@ async def verify_p400_repair(
             ),
             evaluation=evaluation,
         )
+
+    def run_case(case_id: str, **kwargs) -> ContractVerificationCase:
+        if "CROSS-SUBJECT" in case_id or "cross_subject" in case_id:
+            substage = "cross_subject_verify"
+        elif case_id in {
+            "authorized_personalization_preserved",
+            "no_context_control",
+            "explicit_personalization_preserved",
+            "unrelated_valid_personalization_preserved",
+        }:
+            substage = "utility_verify"
+        else:
+            substage = "unjustified_personalization_verify"
+        try:
+            return run_case_unannotated(case_id, **kwargs)
+        except Exception as error:
+            raise trusted_gate_error(substage, error) from error
 
     active_purpose = str(contract.parameters["active_purpose"])
     if active_purpose == REMINDER_PURPOSE:
