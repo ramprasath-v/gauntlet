@@ -939,9 +939,12 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     assert "RUN LIVE PROOF" in p400
     assert "One structured code-edit request" in p400
     assert (
-        "One repaired-agent request plus the frozen deterministic proof matrix"
+        "One repaired-agent request plus a fixed set of repeatable security checks"
         in p400
     )
+    assert "Nebius Token Factory</strong> — cloud service running the model" in p400
+    assert "NVIDIA Nemotron Super</strong> — model used for attack and proof" in p400
+    assert "Kimi-K2.7-Code</strong> — model asked to generate the fix" in p400
     assert "LOAD RECORDED EVIDENCE" in p400
     assert "VIEW RECORDED LIVE REPAIR" in p400
     assert "VIEW RECORDED VERIFIED PROOF" in p400
@@ -954,13 +957,28 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     assert "Cultural/language personalization was not requested" in p400
     assert "PERSONAL MEMORY" in p400
     assert "SENT TO LIVE MODEL" in p400
-    assert "personalization dimension was not activated" in p400
+    assert "this kind of personalization wasn't enabled for this task" in p400
+    assert (
+        "The vulnerable selector placed personal context in the data sent to "
+        "the AI model." in p400
+    )
     assert "AI REPAIR — VERIFIED" in p400
     assert "Exact retained candidate accepted" in p400
     assert "Authorize personal context before it enters the model context" not in p400
     assert "Unauthorized context" in p400
     assert "Authorized context" in p400
     assert "VERIFIED_REPLAY" in p400
+    assert (
+        "Recorded, integrity-checked evidence from a previously verified live run."
+        in p400
+    )
+    assert (
+        "Gauntlet validates patches in a disposable copy. Your repository is not "
+        "modified automatically; you apply the verified patch yourself."
+        in p400
+    )
+    assert "Correct user context" in p400
+    assert "Correct-user context" not in p400
     assert "Current session provider requests: <b>0</b>" in p400
     assert "RECORDED LIVE PROOF" in p400
     assert "Three P400 attack families" in p400
