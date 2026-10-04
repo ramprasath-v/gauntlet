@@ -243,14 +243,20 @@ async def run_live_p400_proof(
     try:
         with workspace:
             assert workspace.path is not None
-            source_context = repair_evidence.contract_request.source_context
-            _, source = read_authorized_source_text(
-                workspace.path,
-                target_path=source_context.repository_relative_path,
-                target_symbol=source_context.target_symbol,
-            )
-            if hashlib.sha256(source.encode()).hexdigest() != source_context.source_hash:
-                raise ValueError("P400 proof source identity mismatch")
+            source_contexts = getattr(
+                repair_evidence.contract_request, "source_contexts", None
+            ) or [repair_evidence.contract_request.source_context]
+            for source_context in source_contexts:
+                _, source = read_authorized_source_text(
+                    workspace.path,
+                    target_path=source_context.repository_relative_path,
+                    target_symbol=source_context.target_symbol,
+                )
+                if (
+                    hashlib.sha256(source.encode()).hexdigest()
+                    != source_context.source_hash
+                ):
+                    raise ValueError("P400 proof source identity mismatch")
             patch_path = workspace.resolve_relative(".gauntlet/p400-live-proof.patch")
             patch_path.parent.mkdir(parents=True, exist_ok=True)
             patch_path.write_text(repair_evidence.derived_patch)
@@ -293,6 +299,10 @@ async def run_live_p400_proof(
                 matrix = await verify_all_p400_families(
                     workspace.path,
                     contract=p400_contract(active_purpose=APP_NAME_PURPOSE),
+                    require_ingress_rejection=(
+                        repair_evidence.schema_version
+                        == "gauntlet.p400-live-repair.v2"
+                    ),
                 )
     finally:
         cleanup = (

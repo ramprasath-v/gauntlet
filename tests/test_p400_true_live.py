@@ -15,7 +15,9 @@ from gauntlet.contracts.p400_true_live import (
 from gauntlet.core.config import NebiusConfig
 from gauntlet.demo.m8_web import create_m8_demo_app
 from gauntlet.llm.nebius import KIMI_K27_CODE_MODEL, NebiusTokenFactoryClient
-from gauntlet.remediation.models import GeneratedEditCandidate, StructuredSourceEdit
+from gauntlet.remediation.models import (
+    GeneratedMultiEditCandidate, StructuredSourceEdit,
+)
 from gauntlet.remediation.retry_models import SafeProviderCompletion
 from gauntlet.remediation.contract_verification import TrustedGateExecutionError
 from gauntlet.sandbox.workspace import repository_digest
@@ -60,9 +62,9 @@ class FakeKimiPatch:
         self.reject = reject
         self.requests = []
 
-    async def generate_edit(self, request) -> str:
+    async def generate_multi_edit(self, request) -> str:
         self.requests.append(request)
-        source = request.source_context
+        source, memory_source = request.source_contexts
         lines = source.source_text.splitlines()
         if self.reject:
             edit = StructuredSourceEdit(
@@ -110,9 +112,25 @@ class FakeKimiPatch:
                     *loop_body,
                 ],
             )
-        return GeneratedEditCandidate(
+        memory_lines = memory_source.source_text.splitlines()
+        memory_start = memory_lines.index(
+            "        eligible_for_personalization = True"
+        ) + 1
+        memory_edit = StructuredSourceEdit(
+            target_path=memory_source.repository_relative_path,
+            target_symbol=memory_source.target_symbol,
+            source_hash=memory_source.source_hash,
+            start_line=memory_start,
+            delete_line_count=1,
+            replacement_lines=[
+                "        eligible_for_personalization = (",
+                "            source_trust == TrustClassification.TRUSTED",
+                "        )",
+            ],
+        )
+        return GeneratedMultiEditCandidate(
             rationale="Enforce the contract before context enters the model.",
-            source_edit=edit,
+            source_edits=[edit, memory_edit],
             optional_policy_artifact=None,
         ).model_dump_json()
 
@@ -276,7 +294,9 @@ async def test_rejected_live_patch_cannot_call_proof(tmp_path):
 async def test_trusted_gate_exception_is_exposed_as_sanitized_patch_diagnostic(
     tmp_path, monkeypatch,
 ):
-    async def fail_cross_subject(workspace, *, contract):
+    async def fail_cross_subject(
+        workspace, *, contract, require_ingress_rejection=False,
+    ):
         raise TrustedGateExecutionError(
             "cross_subject_verify", RuntimeError("sandbox module raised safely")
         )

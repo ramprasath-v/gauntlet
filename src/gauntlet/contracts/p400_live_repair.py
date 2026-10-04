@@ -31,22 +31,26 @@ from gauntlet.contracts.models import (
 )
 from gauntlet.contracts.p400 import evaluate_p400, p400_contract
 from gauntlet.contracts.p400_live import P400LiveEvidence, P400_LIVE_MODEL
+from gauntlet.core.credential_scan import credential_issue
 from gauntlet.contracts.p400_repair import (
     P400_AUTHORIZED_SOURCE,
     verify_p400_repair,
 )
+from gauntlet.contracts.p400_memory_repair import P400_MEMORY_AUTHORIZED_SOURCE
 from gauntlet.remediation.candidate_artifact import (
     load_validated_edit_artifact,
     persist_validated_edit_artifact,
 )
 from gauntlet.remediation.contract_handoff import (
     ContractRepairRequest,
-    build_contract_repair_request,
-    to_remediation_request,
+    MultiTargetContractRepairRequest,
+    build_multi_target_contract_repair_request,
+    to_multi_target_remediation_request,
 )
 from gauntlet.remediation.contract_verification import (
     ContractRepairAssessment,
     ContractRepairExecutor,
+    BoundedMultiTargetContractRepairExecutor,
     ContractReverification,
     ContractVerificationCase,
     TrustedGateExecutionError,
@@ -54,35 +58,44 @@ from gauntlet.remediation.contract_verification import (
 )
 from gauntlet.remediation.models import (
     GeneratedEditCandidate,
+    GeneratedMultiEditCandidate,
     RepairFailure,
     RepairProposal,
 )
-from gauntlet.remediation.parsing import parse_generated_edit_candidate
-from gauntlet.remediation.validation import validate_source_edit
+from gauntlet.remediation.multi_target import (
+    MaterializedMultiEdit,
+    validate_multi_target_edit,
+)
+from gauntlet.remediation.parsing import (
+    parse_generated_multi_edit_candidate,
+)
 from gauntlet.sandbox.workspace import repository_digest
 from victims.personalization.fixtures import CURRENT_USER
 from victims.personalization.memory import PersonalMemoryStore
 
 
-P400_LIVE_REPAIR_EVIDENCE_VERSION = "gauntlet.p400-live-repair.v1"
+LEGACY_P400_LIVE_REPAIR_EVIDENCE_VERSION = "gauntlet.p400-live-repair.v1"
+P400_LIVE_REPAIR_EVIDENCE_VERSION = "gauntlet.p400-live-repair.v2"
 
 
 class P400LiveRepairProvider(Protocol):
     provider_name: str
     model_name: str
 
-    async def generate_edit(self, request) -> str: ...
+    async def generate_multi_edit(self, request) -> str: ...
 
 
 class P400LiveRepairEvidence(StrictModel):
-    schema_version: Literal["gauntlet.p400-live-repair.v1"]
+    schema_version: Literal[
+        "gauntlet.p400-live-repair.v1", "gauntlet.p400-live-repair.v2",
+    ]
     run_id: str
     created_at: datetime
     execution_mode: Literal["LIVE_REPAIR"]
     source_live_attack_path: str
     source_live_attack_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_live_attack_run_id: str
-    contract_request: ContractRepairRequest
+    contract_request: ContractRepairRequest | MultiTargetContractRepairRequest
     provider: str
     model: str
     provider_request_count: Literal[1]
@@ -96,6 +109,13 @@ class P400LiveRepairEvidence(StrictModel):
     provider_error: str | None = None
     edit_candidate: GeneratedEditCandidate | None = None
     edit_artifact: str | None = None
+    multi_edit_candidate: GeneratedMultiEditCandidate | None = None
+    edit_artifacts: list[str] = Field(default_factory=list, max_length=2)
+    derived_patches: dict[str, str] = Field(default_factory=dict)
+    per_edit_patch_digests: dict[str, str] = Field(default_factory=dict)
+    combined_candidate_digest: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     derived_patch: str | None = None
     derived_patch_digest: str | None = Field(
         default=None, pattern=r"^[0-9a-f]{64}$"
@@ -128,19 +148,47 @@ class P400LiveRepairEvidence(StrictModel):
         )
         if (self.repository_immutability == "PASS") != repository_unchanged:
             raise ValueError("live repair repository immutability mismatch")
+        candidate_present = (
+            self.edit_candidate is not None or self.multi_edit_candidate is not None
+        )
         if self.provider_status == "FAIL" and (
             self.provider_output is not None
-            or self.edit_candidate is not None
+            or candidate_present
             or self.candidate_validation != "FAIL"
             or not self.provider_error_type
         ):
             raise ValueError("failed provider call cannot claim a candidate")
-        if self.candidate_validation == "PASS" and (
-            self.edit_candidate is None
-            or self.derived_patch is None
-            or self.derived_patch_digest != _digest(self.derived_patch)
-        ):
-            raise ValueError("validated edit requires its exact derived patch")
+        if self.candidate_validation == "PASS":
+            if (
+                self.derived_patch is None
+                or self.derived_patch_digest != _digest(self.derived_patch)
+            ):
+                raise ValueError("validated edit requires its exact derived patch")
+            if self.schema_version == LEGACY_P400_LIVE_REPAIR_EVIDENCE_VERSION:
+                if self.edit_candidate is None:
+                    raise ValueError("legacy validated edit requires its candidate")
+            else:
+                if not isinstance(
+                    self.contract_request, MultiTargetContractRepairRequest
+                ) or self.multi_edit_candidate is None:
+                    raise ValueError("v2 requires a bounded multi-target candidate")
+                if len(self.edit_artifacts) != len(
+                    self.multi_edit_candidate.source_edits
+                ):
+                    raise ValueError("v2 edit artifacts are incomplete")
+                if set(self.derived_patches) != set(self.per_edit_patch_digests):
+                    raise ValueError("v2 per-edit digest identities differ")
+                if any(
+                    self.per_edit_patch_digests[key] != _digest(value)
+                    for key, value in self.derived_patches.items()
+                ):
+                    raise ValueError("v2 per-edit patch digest mismatch")
+                canonical = json.dumps(
+                    self.multi_edit_candidate.model_dump(mode="json"),
+                    ensure_ascii=True, sort_keys=True, separators=(",", ":"),
+                )
+                if self.combined_candidate_digest != _digest(canonical):
+                    raise ValueError("v2 combined candidate digest mismatch")
         if self.live_repair_status == "VERIFIED":
             if (
                 self.sandbox_assessment is None
@@ -173,17 +221,20 @@ def load_p400_live_attack(path: Path) -> P400LiveEvidence:
 
 def build_live_p400_repair_request(
     *, live_attack: P400LiveEvidence, repository_root: Path,
-) -> ContractRepairRequest:
+) -> MultiTargetContractRepairRequest:
     assert live_attack.execution is not None
     assert live_attack.evaluation is not None
     contract = p400_contract(
         active_purpose=live_attack.model_envelope.active_purpose
     )
-    return build_contract_repair_request(
+    return build_multi_target_contract_repair_request(
         contract=contract,
         violation=live_attack.evaluation,
         counterexample_trace=live_attack.execution.trace,
-        authorized_source=P400_AUTHORIZED_SOURCE,
+        authorized_sources=[
+            P400_AUTHORIZED_SOURCE,
+            P400_MEMORY_AUTHORIZED_SOURCE,
+        ],
         expected_security_property=(
             "Evaluate every personal-context item independently before retrieval or "
             "model-context construction. An item may enter only when its source is "
@@ -192,6 +243,8 @@ def build_live_p400_repair_request(
             "subjects match the active principal; the grant purpose matches the "
             "active task purpose; the grant state is ACTIVE; and the item's "
             "personalization dimension is activated for the current task."
+            " Untrusted persistent-memory input must not become eligible for "
+            "personalization at ingestion."
         ),
         legitimate_behaviors_to_preserve=[
             "Explicitly requested cultural personalization remains available.",
@@ -223,7 +276,7 @@ async def run_live_p400_repair(
     request = build_live_p400_repair_request(
         live_attack=live_attack, repository_root=root
     )
-    remediation = to_remediation_request(
+    remediation = to_multi_target_remediation_request(
         request, provider=provider.provider_name, model=provider.model_name
     )
     before = repository_digest(root)
@@ -231,14 +284,15 @@ async def run_live_p400_repair(
     started = time.perf_counter()
     raw: str | None = None
     error_type = error_message = None
-    candidate = None
+    candidate: GeneratedMultiEditCandidate | None = None
     patch = None
     validation_failure: dict[str, Any] | None = None
     assessment = None
-    edit_artifact = None
+    edit_artifacts: list[str] = []
+    materialized_multi: MaterializedMultiEdit | None = None
 
     try:
-        raw = await provider.generate_edit(remediation)
+        raw = await provider.generate_multi_edit(remediation)
     except Exception as error:
         error_type = type(error).__name__
         error_message = _safe_error(error, credential_values)
@@ -246,7 +300,7 @@ async def run_live_p400_repair(
 
     if raw is not None:
         try:
-            candidate = parse_generated_edit_candidate(raw)
+            candidate = parse_generated_multi_edit_candidate(raw)
         except (ValidationError, ValueError) as error:
             error_type = type(error).__name__
             error_message = _safe_error(error, credential_values)
@@ -256,68 +310,51 @@ async def run_live_p400_repair(
                 "error_type": error_type,
             }
         else:
-            materialized: dict[str, object] = {}
-            result = validate_source_edit(
-                candidate,
-                remediation.repair_context,
-                root,
-                materialized_output=materialized,
+            result = validate_multi_target_edit(
+                candidate, remediation.repair_contexts, root,
             )
             if isinstance(result, RepairFailure):
                 validation_failure = result.model_dump(mode="json")
             else:
-                patch = result
-                edit_id = str(uuid4())
-                edit_path = (
-                    evidence_directory / f"live-{run_id}.edits"
-                    / f"attempt-01-{edit_id}.json"
-                )
-                persist_validated_edit_artifact(
-                    candidate,
-                    path=edit_path,
-                    edit_id=edit_id,
-                    run_id=run_id,
-                    originating_attempt=1,
-                    provider=provider.provider_name,
-                    model=provider.model_name,
-                    trace_id=request.source_context.trace_id,
-                    boundary_id=request.source_context.boundary_id,
-                    evidence_ids=request.source_context.evidence_ids,
-                    target_path=request.source_context.repository_relative_path,
-                    target_symbol=request.source_context.target_symbol,
-                    source_hash=request.source_context.source_hash,
-                    trusted_original_lines=list(
-                        materialized.get("trusted_original_lines", [])
-                    ),
-                    derived_patch=patch,
-                )
-                edit_artifact = edit_path.relative_to(
-                    evidence_directory
-                ).as_posix()
-                try:
-                    proposal = RepairProposal(
-                        rationale=candidate.rationale,
-                        patch=patch,
-                        regression_test=(
-                            "def test_p400_candidate_requires_trusted_reverification():\n"
-                            "    assert True\n"
-                        ),
-                        optional_policy_artifact=candidate.optional_policy_artifact,
-                        repair_id=str(uuid4()),
-                        trace_id=request.source_context.trace_id,
-                        boundary_id=request.source_context.boundary_id,
-                        evidence_ids=request.source_context.evidence_ids,
+                materialized_multi = result
+                patch = result.combined_patch
+                for edit in result.edits:
+                    edit_id = str(uuid4())
+                    edit_path = (
+                        evidence_directory / f"live-{run_id}.edits"
+                        / f"attempt-01-{edit_id}.json"
+                    )
+                    persist_validated_edit_artifact(
+                        edit.candidate,
+                        path=edit_path,
+                        edit_id=edit_id,
+                        run_id=run_id,
+                        originating_attempt=1,
                         provider=provider.provider_name,
                         model=provider.model_name,
-                        target_path=request.source_context.repository_relative_path,
-                        target_symbol=request.source_context.target_symbol,
-                        source_hash=request.source_context.source_hash,
-                        failure_type=request.contract.contract_id,
+                        trace_id=edit.context.trace_id,
+                        boundary_id=edit.context.boundary_id,
+                        evidence_ids=edit.context.evidence_ids,
+                        target_path=edit.context.target_path,
+                        target_symbol=edit.context.target_symbol,
+                        source_hash=edit.context.source_hash,
+                        trusted_original_lines=list(edit.trusted_original_lines),
+                        derived_patch=edit.derived_patch,
                     )
-                    assessment = await ContractRepairExecutor(root).run(
-                        proposal,
-                        lambda workspace: verify_all_p400_families(
-                            workspace, contract=request.contract
+                    edit_artifacts.append(edit_path.relative_to(
+                        evidence_directory
+                    ).as_posix())
+                try:
+                    assessment = await BoundedMultiTargetContractRepairExecutor(
+                        root
+                    ).run(
+                        repair_id=str(uuid4()),
+                        repair_contexts=[edit.context for edit in result.edits],
+                        combined_patch=patch,
+                        verifier=lambda workspace: verify_all_p400_families(
+                            workspace,
+                            contract=request.contract,
+                            require_ingress_rejection=True,
                         ),
                     )
                 except Exception as error:
@@ -371,8 +408,31 @@ async def run_live_p400_repair(
         provider_output=raw,
         provider_error_type=error_type,
         provider_error=error_message,
-        edit_candidate=candidate,
-        edit_artifact=edit_artifact,
+        edit_candidate=None,
+        edit_artifact=edit_artifacts[0] if edit_artifacts else None,
+        multi_edit_candidate=candidate,
+        edit_artifacts=edit_artifacts,
+        derived_patches=(
+            {
+                f"{edit.context.target_path}::{edit.context.target_symbol}": (
+                    edit.derived_patch
+                )
+                for edit in materialized_multi.edits
+            }
+            if materialized_multi else {}
+        ),
+        per_edit_patch_digests=(
+            {
+                f"{edit.context.target_path}::{edit.context.target_symbol}": (
+                    edit.patch_digest
+                )
+                for edit in materialized_multi.edits
+            }
+            if materialized_multi else {}
+        ),
+        combined_candidate_digest=(
+            materialized_multi.candidate_digest if materialized_multi else None
+        ),
         derived_patch=patch,
         derived_patch_digest=_digest(patch) if patch is not None else None,
         candidate_validation="PASS" if validation_passed else "FAIL",
@@ -409,6 +469,57 @@ async def verify_retained_p400_live_repair(
     """Re-run the exact retained patch through the production trusted verifier."""
     path = evidence_path.resolve(strict=True)
     evidence = P400LiveRepairEvidence.model_validate_json(path.read_text())
+    if evidence.schema_version == P400_LIVE_REPAIR_EVIDENCE_VERSION:
+        if (
+            evidence.candidate_validation != "PASS"
+            or evidence.multi_edit_candidate is None
+            or not isinstance(
+                evidence.contract_request, MultiTargetContractRepairRequest
+            )
+            or evidence.derived_patch is None
+            or evidence.derived_patch_digest is None
+        ):
+            raise ValueError("verify-only requires retained validated P400 v2 edits")
+        contexts = to_multi_target_remediation_request(
+            evidence.contract_request,
+            provider=evidence.provider,
+            model=evidence.model,
+        ).repair_contexts
+        materialized = validate_multi_target_edit(
+            evidence.multi_edit_candidate, contexts, repository_root,
+        )
+        if isinstance(materialized, RepairFailure) or (
+            materialized.combined_patch != evidence.derived_patch
+            or materialized.combined_patch_digest != evidence.derived_patch_digest
+            or materialized.candidate_digest != evidence.combined_candidate_digest
+        ):
+            raise ValueError("retained P400 v2 edit differs from trusted materialization")
+        if len(evidence.edit_artifacts) != len(materialized.edits):
+            raise ValueError("retained P400 v2 edit evidence is incomplete")
+        for relative, edit in zip(evidence.edit_artifacts, materialized.edits):
+            artifact_path = (path.parent / relative).resolve(strict=True)
+            if not artifact_path.is_relative_to(path.parent.resolve()):
+                raise ValueError("retained edit artifact escapes its evidence directory")
+            artifact = load_validated_edit_artifact(artifact_path)
+            if (
+                artifact.run_id != evidence.run_id
+                or artifact.edit_candidate() != edit.candidate
+                or artifact.derived_patch != edit.derived_patch
+                or artifact.derived_patch_digest != edit.patch_digest
+            ):
+                raise ValueError("retained P400 v2 edit artifact differs")
+        return await BoundedMultiTargetContractRepairExecutor(
+            repository_root
+        ).run(
+            repair_id=evidence.run_id,
+            repair_contexts=[edit.context for edit in materialized.edits],
+            combined_patch=materialized.combined_patch,
+            verifier=lambda workspace: verify_all_p400_families(
+                workspace,
+                contract=evidence.contract_request.contract,
+                require_ingress_rejection=True,
+            ),
+        )
     if (
         evidence.candidate_validation != "PASS"
         or evidence.edit_candidate is None
@@ -461,6 +572,7 @@ async def verify_retained_p400_live_repair(
 
 async def verify_all_p400_families(
     workspace_root: Path, *, contract: SecurityContract,
+    require_ingress_rejection: bool = False,
 ) -> ContractReverification:
     base = await verify_p400_repair(workspace_root, contract=contract)
     try:
@@ -508,7 +620,11 @@ async def verify_all_p400_families(
         )
 
     try:
-        poisoned_store = PersonalMemoryStore()
+        store_class = (
+            _load_patched_memory(workspace_root)
+            if require_ingress_rejection else PersonalMemoryStore
+        )
+        poisoned_store = store_class()
         poison_receipt = poisoned_store.ingest(
             POISON_INPUT,
             source_id=POISON_SOURCE_ID,
@@ -526,14 +642,16 @@ async def verify_all_p400_families(
         )
         poison_case = poison_case.model_copy(update={
             "expected_behavior_observed": (
-                poison_receipt.stored and poison_case.expected_behavior_observed
+                ((not poison_receipt.stored) if require_ingress_rejection
+                 else poison_receipt.stored)
+                and poison_case.expected_behavior_observed
             )
         })
     except Exception as error:
         raise trusted_gate_error("poisoned_memory_verify", error) from error
 
     try:
-        authorized_store = PersonalMemoryStore()
+        authorized_store = store_class()
         authorized_receipt = authorized_store.ingest(
             AUTHORIZED_INPUT,
             source_id="explicit-user-memory-setting",
@@ -556,7 +674,7 @@ async def verify_all_p400_families(
             )
         })
 
-        mixed_store = PersonalMemoryStore()
+        mixed_store = store_class()
         mixed_store.ingest(
             AUTHORIZED_INPUT,
             source_id="explicit-user-memory-setting",
@@ -599,6 +717,21 @@ def _load_patched_agent(workspace_root: Path):
     finally:
         sys.modules.pop(name, None)
     return module
+
+
+def _load_patched_memory(workspace_root: Path):
+    path = workspace_root / P400_MEMORY_AUTHORIZED_SOURCE.target_path
+    name = f"gauntlet_p400_live_memory_{uuid4().hex}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("patched P400 memory store could not be loaded")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(name, None)
+    return module.PersonalMemoryStore
 
 
 def _provider_metadata(provider: P400LiveRepairProvider) -> dict[str, Any] | None:
@@ -664,7 +797,13 @@ def _digest(value: str) -> str:
 
 
 def _integrity_digest(evidence: P400LiveRepairEvidence) -> str:
-    payload = evidence.model_dump(mode="json", exclude={"integrity_digest"})
+    exclude = {"integrity_digest"}
+    if evidence.schema_version == LEGACY_P400_LIVE_REPAIR_EVIDENCE_VERSION:
+        exclude.update({
+            "multi_edit_candidate", "edit_artifacts", "derived_patches",
+            "per_edit_patch_digests", "combined_candidate_digest",
+        })
+    payload = evidence.model_dump(mode="json", exclude=exclude)
     return _digest(json.dumps(
         payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     ))
@@ -676,13 +815,13 @@ def _persist(
     credentials: tuple[str, ...],
 ) -> None:
     serialized = evidence.model_dump_json(indent=2) + "\n"
-    if any(secret and secret in serialized for secret in credentials):
+    issue = credential_issue(
+        evidence.model_dump(mode="json"),
+        configured_credentials=credentials,
+    )
+    if issue == "configured_credential":
         raise ValueError("credential scan failed; live repair evidence not persisted")
-    if re.search(
-        r"(?i)(authorization\s*[:=]|bearer\s+[A-Za-z0-9._~+/=-]+|"
-        r"api[_-]?key\s*[:=]|access[_-]?token\s*[:=])",
-        serialized,
-    ):
+    if issue == "credential_marker":
         raise ValueError("credential marker detected; live repair evidence not persisted")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serialized)

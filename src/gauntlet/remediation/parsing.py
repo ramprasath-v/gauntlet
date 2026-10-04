@@ -5,7 +5,8 @@ import re
 from pydantic import BaseModel, ValidationError
 
 from gauntlet.remediation.models import (
-    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
+    GeneratedEditCandidate, GeneratedMultiEditCandidate,
+    GeneratedRepairCandidate, GeneratedTestCandidate,
 )
 
 
@@ -49,6 +50,18 @@ class GeneratedEditCandidateJSONError(GeneratedCandidateJSONError):
     ):
         super().__init__(
             kind="GeneratedEditCandidate",
+            content_length=content_length, line=line, column=column,
+            code_point=code_point, diagnostic_window=diagnostic_window,
+        )
+
+
+class GeneratedMultiEditCandidateJSONError(GeneratedCandidateJSONError):
+    def __init__(
+        self, *, content_length: int, line: int, column: int,
+        code_point: str, diagnostic_window: str,
+    ):
+        super().__init__(
+            kind="GeneratedMultiEditCandidate",
             content_length=content_length, line=line, column=column,
             code_point=code_point, diagnostic_window=diagnostic_window,
         )
@@ -116,6 +129,12 @@ def parse_generated_repair_candidate(raw: str) -> GeneratedRepairCandidate:
 def parse_generated_edit_candidate(raw: str) -> GeneratedEditCandidate:
     return _parse(
         GeneratedEditCandidate, GeneratedEditCandidateJSONError, raw,
+    )  # type: ignore[return-value]
+
+
+def parse_generated_multi_edit_candidate(raw: str) -> GeneratedMultiEditCandidate:
+    return _parse(
+        GeneratedMultiEditCandidate, GeneratedMultiEditCandidateJSONError, raw,
     )  # type: ignore[return-value]
 
 

@@ -151,6 +151,23 @@ class GeneratedEditCandidate(StrictModel):
     optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
 
 
+class GeneratedMultiEditCandidate(StrictModel):
+    """One bounded edit per explicitly authorized source boundary."""
+
+    rationale: str = Field(max_length=8_000)
+    source_edits: list[StructuredSourceEdit] = Field(min_length=1, max_length=2)
+    optional_policy_artifact: str | None = Field(default=None, max_length=16_000)
+
+    @model_validator(mode="after")
+    def unique_authorized_boundaries(self) -> "GeneratedMultiEditCandidate":
+        targets = [
+            (edit.target_path, edit.target_symbol) for edit in self.source_edits
+        ]
+        if len(targets) != len(set(targets)):
+            raise ValueError("multi-target candidate has duplicate source boundaries")
+        return self
+
+
 class GeneratedTestCandidate(StrictModel):
     """Decoded provider content for the regression-test call.
 
@@ -292,3 +309,27 @@ class RemediationRequest(StrictModel):
     source_context: SourceContext
     repair_context: RepairContext
     evidence_summary: dict[str, Any]
+
+
+class MultiTargetRemediationRequest(StrictModel):
+    """Provider input containing only an explicit bounded source allowlist."""
+
+    source_contexts: list[SourceContext] = Field(min_length=2, max_length=2)
+    repair_contexts: list[RepairContext] = Field(min_length=2, max_length=2)
+    evidence_summary: dict[str, Any]
+
+    @model_validator(mode="after")
+    def contexts_match(self) -> "MultiTargetRemediationRequest":
+        source_targets = [
+            (item.repository_relative_path, item.target_symbol, item.source_hash)
+            for item in self.source_contexts
+        ]
+        repair_targets = [
+            (item.target_path, item.target_symbol, item.source_hash)
+            for item in self.repair_contexts
+        ]
+        if len(set(source_targets)) != len(source_targets):
+            raise ValueError("authorized source contexts must be unique")
+        if source_targets != repair_targets:
+            raise ValueError("multi-target source and repair contexts differ")
+        return self

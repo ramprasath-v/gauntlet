@@ -8,7 +8,7 @@ from pydantic import Field
 
 from gauntlet.contracts.models import ContractEvaluation
 from gauntlet.remediation.context import read_authorized_source_text
-from gauntlet.remediation.models import RepairProposal, StrictModel
+from gauntlet.remediation.models import RepairContext, RepairProposal, StrictModel
 from gauntlet.sandbox.m4_runner import M41CommandRunner
 from gauntlet.sandbox.models import CommandResult
 from gauntlet.sandbox.workspace import SandboxWorkspace, repository_digest
@@ -124,6 +124,91 @@ class ContractRepairExecutor:
         return ContractRepairAssessment(
             repair_id=proposal.repair_id,
             target_path=proposal.target_path,
+            patch_digest=patch_digest,
+            source_identity=source_identity,
+            patch_application=application,
+            compilation=compilation,
+            reverification=reverification,
+            verdict=verdict,
+            cleanup=cleanup,
+            repository_immutability="PASS" if unchanged else "FAIL",
+        )
+
+
+class BoundedMultiTargetContractRepairExecutor:
+    """Apply one mechanically combined patch for an explicit source allowlist."""
+
+    def __init__(
+        self, repository_root: Path, *, runner: M41CommandRunner | None = None
+    ) -> None:
+        self.repository_root = repository_root.resolve(strict=True)
+        self.runner = runner or M41CommandRunner()
+
+    async def run(
+        self,
+        *,
+        repair_id: str,
+        repair_contexts: list[RepairContext],
+        combined_patch: str,
+        verifier: ContractVerifier,
+    ) -> ContractRepairAssessment:
+        substage = "repository_integrity"
+        try:
+            before = repository_digest(self.repository_root)
+            patch_digest = sha256(combined_patch.encode()).hexdigest()
+            source_identity = "FAIL"
+            application = compilation = None
+            reverification = None
+            verdict = "NOT_VERIFIED"
+            workspace = SandboxWorkspace(self.repository_root)
+            substage = "workspace_create"
+            workspace.create()
+            assert workspace.path is not None
+            substage = "source_verify"
+            identities_match = True
+            for context in repair_contexts:
+                _, source = read_authorized_source_text(
+                    workspace.path,
+                    target_path=context.target_path,
+                    target_symbol=context.target_symbol,
+                )
+                identities_match = identities_match and (
+                    sha256(source.encode()).hexdigest() == context.source_hash
+                )
+            if identities_match:
+                source_identity = "PASS"
+                artifact = workspace.resolve_relative(
+                    ".gauntlet/contract-multi-repair.patch"
+                )
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                artifact.write_bytes(combined_patch.encode())
+                substage = "patch_apply"
+                application = await self.runner.apply_patch(workspace, artifact)
+                if application.passed:
+                    substage = "compile"
+                    compilation = await self.runner.compile(workspace)
+                    if compilation.passed:
+                        substage = "trusted_reverification"
+                        reverification = await verifier(workspace.path)
+                        if reverification.passed:
+                            verdict = "VERIFIED"
+        except Exception as error:
+            raise trusted_gate_error(substage, error) from error
+        finally:
+            substage = "cleanup"
+            try:
+                if "workspace" in locals():
+                    workspace.cleanup()
+            except Exception as error:
+                raise trusted_gate_error(substage, error) from error
+        cleanup = "PASS" if workspace.path and not workspace.path.exists() else "FAIL"
+        try:
+            unchanged = repository_digest(self.repository_root) == before
+        except Exception as error:
+            raise trusted_gate_error("repository_integrity", error) from error
+        return ContractRepairAssessment(
+            repair_id=repair_id,
+            target_path=",".join(context.target_path for context in repair_contexts),
             patch_digest=patch_digest,
             source_identity=source_identity,
             patch_application=application,

@@ -15,7 +15,6 @@ from gauntlet.adversarial.evidence import (
 from gauntlet.adversarial.generator import AdversarialScenarioProvider
 from gauntlet.adversarial.p300 import execute_p300_scenario, p300_adversarial_request
 from gauntlet.adversarial.p300_workflow import run_p300_adversarial_generation
-from gauntlet.attacks.p400_poisoned_memory import run_poisoned_memory_attack
 from gauntlet.contracts.models import ContractStatus, SecurityContract, StrictModel
 from gauntlet.contracts.p300 import p300_contract
 from gauntlet.contracts.p300_live import P300LiveRepairReceipt
@@ -23,27 +22,18 @@ from gauntlet.contracts.p400 import evaluate_p400, p400_contract
 from gauntlet.contracts.p400_live import P400LiveEvidence
 from gauntlet.contracts.p400_live_repair import (
     P400LiveRepairEvidence,
-    build_live_p400_repair_request,
 )
-from gauntlet.contracts.p400_memory_repair import (
-    P400_MEMORY_AUTHORIZED_SOURCE,
-    build_p400_memory_repair_request,
-    known_good_p400_memory_proposal,
-    verify_p400_memory_repair,
-)
-from gauntlet.contracts.p400_repair import (
-    P400_AUTHORIZED_SOURCE,
-    build_p400_repair_request,
-    known_good_p400_proposal,
-    verify_p400_repair,
-)
+from gauntlet.contracts.p400_true_live import P400LiveProofEvidence
 from gauntlet.demo.m7 import load_demo_evidence
 from gauntlet.demo.m72 import LiveRunEvidence
-from gauntlet.remediation.candidate_artifact import candidate_identity
+from gauntlet.remediation.candidate_artifact import (
+    ValidatedEditArtifact,
+    candidate_identity,
+    load_validated_edit_artifact,
+)
 from gauntlet.remediation.models import RepairContext, RepairFailure
 from gauntlet.remediation.parsing import parse_generated_repair_candidate
 from gauntlet.remediation.validation import validate_candidate
-from gauntlet.remediation.contract_verification import ContractRepairExecutor
 from gauntlet.sandbox.workspace import repository_digest
 from victims.personalization.agent import PersonalizationAgent
 from victims.personalization.fixtures import (
@@ -76,17 +66,16 @@ P100_LIVE_TIMING_PATH = Path(
 P100_LIVE_RUN_ID = "aa235ab8-a42d-4dca-bd26-cf626b845274"
 P100_LIVE_CANDIDATE_ID = "88046534-dd15-45fe-8241-d8ef0795a472"
 P100_REJECTION_CODE = "edit_range_splits_compound_statement"
-P400_LIVE_ATTACK_PATH = Path(
-    "evidence/p400-live/live-f43d28c4-c2ba-4884-a532-e3dd98d42b1d.json"
-)
-P400_LIVE_ATTACK_SHA256 = (
-    "1ef53d15dc5d84f20e861fe26ecc231bbe2b3e28e933b316da658a248a6a11cd"
-)
-P400_LIVE_REPAIR_PATH = Path(
-    "evidence/p400-live-repair/live-650b297d-3d72-4c93-adf0-1a9664827668.json"
-)
-P400_LIVE_REPAIR_SHA256 = (
-    "74af08165922e9c205782244d9fefc5ada0644a79020c3c6bc4efa7e688a29cb"
+P400_RECORDED_DIRECTORY = Path("evidence/p400-recorded-success")
+P400_RECORDED_MANIFEST_PATH = P400_RECORDED_DIRECTORY / "manifest.json"
+P400_LIVE_ATTACK_PATH = P400_RECORDED_DIRECTORY / "attack.json"
+P400_LIVE_REPAIR_PATH = P400_RECORDED_DIRECTORY / "repair.json"
+P400_LIVE_PROOF_PATH = P400_RECORDED_DIRECTORY / "proof.json"
+P400_RECORDED_ATTACK_RUN_ID = "8edbbe1c-2328-4679-ae8c-773f7c1254f5"
+P400_RECORDED_REPAIR_RUN_ID = "d2bb7191-7450-47b3-bf8c-d534a46c75e6"
+P400_RECORDED_PROOF_RUN_ID = "f627da99-6835-4aed-8b76-f17bab4bb9b2"
+P400_RECORDED_PATCH_DIGEST = (
+    "19ed65221df52c02c38f6b25be0668abd9758c3614bdca910f1a4728de54bf16"
 )
 
 CUSTOMER_SUPPORT_TOOLS = [
@@ -260,18 +249,33 @@ class P400RecordedRepairView(StrictModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
-    candidate_id: str
-    target_path: str
-    target_symbol: str
-    selected_start_line: int
-    selected_delete_line_count: int
-    candidate_validation: Literal["FAIL"]
-    result: Literal["REJECTED"]
-    failure_stage: str
-    failure_code: str
-    failure_message: str
+    candidate_ids: list[str]
+    targets: list[str]
+    candidate_validation: Literal["PASS"]
+    result: Literal["VERIFIED"]
+    patch_digest: str
     repository_immutability: Literal["PASS"]
     historical_evidence_immutability: Literal["PASS"]
+
+
+class P400RecordedProofView(StrictModel):
+    execution_mode: Literal["RECORDED_LIVE_PROOF"]
+    evidence_path: str
+    evidence_digest: str
+    run_id: str
+    provider: str
+    model: str
+    provider_requests: Literal[1]
+    http_status: int
+    finish_reason: str
+    latency_seconds: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    live_post_repair: Literal["PASS"]
+    deterministic_matrix_status: Literal["PASS"]
+    final_status: Literal["VERIFIED"]
+    repository_immutability: Literal["PASS"]
 
 
 class P400ProofCaseView(StrictModel):
@@ -281,7 +285,7 @@ class P400ProofCaseView(StrictModel):
 
 
 class P400VerifiedProofView(StrictModel):
-    mode: Literal["VERIFIED_PROOF"]
+    mode: Literal["VERIFIED_REPLAY"]
     provider_requests: Literal[0]
     property_id: Literal["P400"]
     title: Literal["Personalization Provenance"]
@@ -289,7 +293,8 @@ class P400VerifiedProofView(StrictModel):
     security_boundary: Literal["Context → Personalization"]
     recorded_attack: P400RecordedAttackView
     recorded_repair: P400RecordedRepairView
-    proof_provenance: Literal["INDEPENDENT_PATCH"]
+    recorded_proof: P400RecordedProofView
+    proof_provenance: Literal["RECORDED_LIVE_PROOF"]
     user_request: str
     attack_result: Literal["VIOLATED"]
     context_id: str
@@ -573,93 +578,37 @@ async def run_m8_live(
 async def run_p400_verified_proof(
     repository_root: Path,
 ) -> P400VerifiedProofView:
-    """Load retained live evidence, then run the independent trusted proof."""
+    """Load the integrity-bound successful live chain without provider calls."""
     root = repository_root.resolve(strict=True)
     before = repository_digest(root)
-    attack, repair = _load_p400_recorded_evidence(root)
+    attack, repair, proof, edits, manifest = _load_p400_recorded_evidence(root)
     assert attack.execution is not None
     assert attack.evaluation is not None
-    contract = p400_contract(active_purpose=attack.model_envelope.active_purpose)
-    request = build_live_p400_repair_request(
-        live_attack=attack, repository_root=root,
-    )
-    proposal = known_good_p400_proposal(request, repository_root=root)
-    assessment = await ContractRepairExecutor(root).run(
-        proposal,
-        lambda workspace: verify_p400_repair(workspace, contract=contract),
-    )
-    poison_attack = run_poisoned_memory_attack()
-    poison_contract = p400_contract(
-        active_purpose=str(poison_attack.later_execution.trace.metadata[
-            "active_purpose"
-        ])
-    )
-    memory_request = build_p400_memory_repair_request(
-        attack=poison_attack, contract=poison_contract, repository_root=root,
-    )
-    memory_proposal = known_good_p400_memory_proposal(
-        memory_request, repository_root=root,
-    )
-    memory_assessment = await ContractRepairExecutor(root).run(
-        memory_proposal,
-        lambda workspace: verify_p400_memory_repair(
-            workspace, contract=poison_contract,
-        ),
-    )
-    if (
-        assessment.verdict != "VERIFIED"
-        or assessment.source_identity != "PASS"
-        or assessment.patch_application is None
-        or not assessment.patch_application.passed
-        or assessment.compilation is None
-        or not assessment.compilation.passed
-        or assessment.reverification is None
-        or not assessment.reverification.passed
-        or assessment.cleanup != "PASS"
-        or assessment.repository_immutability != "PASS"
-        or memory_assessment.verdict != "VERIFIED"
-        or memory_assessment.source_identity != "PASS"
-        or memory_assessment.patch_application is None
-        or not memory_assessment.patch_application.passed
-        or memory_assessment.compilation is None
-        or not memory_assessment.compilation.passed
-        or memory_assessment.reverification is None
-        or not memory_assessment.reverification.passed
-        or memory_assessment.cleanup != "PASS"
-        or memory_assessment.repository_immutability != "PASS"
-        or repository_digest(root) != before
-    ):
-        raise ValueError("deterministic P400 proof did not pass every trusted gate")
+    assessment = repair.sandbox_assessment
+    assert assessment is not None
+    assert proof.deterministic_matrix is not None
     cases = {
         case.case_id: case
-        for case in assessment.reverification.cases
-    }
-    memory_cases = {
-        case.case_id: case
-        for case in memory_assessment.reverification.cases
+        for case in proof.deterministic_matrix.cases
     }
     required = {
+        "canonical_purpose_mismatch_blocked",
         "P400-CROSS-SUBJECT",
         "unjustified_personalization_blocked",
         "explicit_personalization_preserved",
         "authorized_personalization_preserved",
         "mixed_personalization_filtered",
         "no_context_control",
-    }
-    required_memory = {
-        "poisoned_memory_excluded",
+        "poisoned_personal_context_blocked",
         "authorized_persistent_memory_preserved",
-        "mixed_memory_filtered_item_by_item",
+        "mixed_persistent_memory_filtered_item_by_item",
     }
     if not required <= set(cases) or not all(
         cases[case_id].expected_behavior_observed for case_id in required
     ):
-        raise ValueError("deterministic P400 proof cases are incomplete")
-    if not required_memory <= set(memory_cases) or not all(
-        memory_cases[case_id].expected_behavior_observed
-        for case_id in required_memory
-    ):
-        raise ValueError("deterministic P400 memory proof cases are incomplete")
+        raise ValueError("recorded P400 proof matrix is incomplete")
+    if repository_digest(root) != before:
+        raise ValueError("recorded P400 replay modified the repository")
     violation = attack.evaluation.evidence[0]
     observations = violation.observations
     failures = observations.get("failed_authorization_dimensions")
@@ -673,17 +622,23 @@ async def run_p400_verified_proof(
         raise ValueError("retained P400 provider receipt is incomplete")
     context = attack.model_envelope.context_items[0]
     completion = repair.provider_completion or {}
-    failure = repair.validation_failure or {}
-    edit = repair.edit_candidate.source_edit if repair.edit_candidate else None
+    proof_receipt = proof.provider_receipt
     if (
-        edit is None
-        or not isinstance(failure.get("failure_code"), str)
-        or completion.get("http_status") is None
+        completion.get("http_status") is None
         or completion.get("finish_reason") is None
+        or proof_receipt.http_status is None
+        or proof_receipt.finish_reason is None
+        or proof_receipt.prompt_tokens is None
+        or proof_receipt.completion_tokens is None
+        or proof_receipt.total_tokens is None
     ):
-        raise ValueError("retained P400 repair evidence is incomplete")
+        raise ValueError("recorded P400 provider receipts are incomplete")
+    attack_digest = str(manifest["attack"]["file_sha256"])
+    repair_digest = str(manifest["repair"]["file_sha256"])
+    proof_digest = str(manifest["proof"]["file_sha256"])
+    targets = [f"{item.target_path}::{item.target_symbol}" for item in edits]
     return P400VerifiedProofView(
-        mode="VERIFIED_PROOF",
+        mode="VERIFIED_REPLAY",
         provider_requests=0,
         property_id="P400",
         title="Personalization Provenance",
@@ -692,7 +647,7 @@ async def run_p400_verified_proof(
         recorded_attack=P400RecordedAttackView(
             execution_mode="RECORDED_LIVE_ATTACK",
             evidence_path=P400_LIVE_ATTACK_PATH.as_posix(),
-            evidence_digest=P400_LIVE_ATTACK_SHA256,
+            evidence_digest=attack_digest,
             run_id=attack.run_id,
             provider=attack.provider,
             model=attack.model,
@@ -728,7 +683,7 @@ async def run_p400_verified_proof(
         recorded_repair=P400RecordedRepairView(
             execution_mode="RECORDED_LIVE_REPAIR",
             evidence_path=P400_LIVE_REPAIR_PATH.as_posix(),
-            evidence_digest=P400_LIVE_REPAIR_SHA256,
+            evidence_digest=repair_digest,
             run_id=repair.run_id,
             provider=repair.provider,
             model=repair.model,
@@ -739,22 +694,36 @@ async def run_p400_verified_proof(
             prompt_tokens=int(completion["prompt_tokens"]),
             completion_tokens=int(completion["completion_tokens"]),
             total_tokens=int(completion["total_tokens"]),
-            candidate_id=str(failure["candidate_id"]),
-            target_path=edit.target_path,
-            target_symbol=edit.target_symbol,
-            selected_start_line=edit.start_line,
-            selected_delete_line_count=edit.delete_line_count,
-            candidate_validation="FAIL",
-            result="REJECTED",
-            failure_stage=str(failure["failure_stage"]),
-            failure_code=str(failure["failure_code"]),
-            failure_message=str(failure["message"]),
+            candidate_ids=[item.edit_id for item in edits],
+            targets=targets,
+            candidate_validation="PASS",
+            result="VERIFIED",
+            patch_digest=P400_RECORDED_PATCH_DIGEST,
             repository_immutability=repair.repository_immutability,
             historical_evidence_immutability=(
                 repair.historical_evidence_immutability
             ),
         ),
-        proof_provenance="INDEPENDENT_PATCH",
+        recorded_proof=P400RecordedProofView(
+            execution_mode="RECORDED_LIVE_PROOF",
+            evidence_path=P400_LIVE_PROOF_PATH.as_posix(),
+            evidence_digest=proof_digest,
+            run_id=proof.run_id,
+            provider=proof.provider,
+            model=proof.model,
+            provider_requests=1,
+            http_status=int(proof_receipt.http_status),
+            finish_reason=str(proof_receipt.finish_reason),
+            latency_seconds=proof_receipt.latency_seconds,
+            prompt_tokens=int(proof_receipt.prompt_tokens),
+            completion_tokens=int(proof_receipt.completion_tokens),
+            total_tokens=int(proof_receipt.total_tokens),
+            live_post_repair="PASS",
+            deterministic_matrix_status="PASS",
+            final_status="VERIFIED",
+            repository_immutability=proof.repository_immutability,
+        ),
+        proof_provenance="RECORDED_LIVE_PROOF",
         user_request=attack.model_envelope.user_request,
         attack_result="VIOLATED",
         context_id=str(observations["context_id"]),
@@ -768,16 +737,9 @@ async def run_p400_verified_proof(
         failed_authorization_dimensions=[str(value) for value in failures],
         lineage_owner="gauntlet_framework",
         repair_message="Authorize personal context before it enters the model context.",
-        repair_target=(
-            f"{P400_AUTHORIZED_SOURCE.target_path}::"
-            f"{P400_AUTHORIZED_SOURCE.target_symbol}; "
-            f"{P400_MEMORY_AUTHORIZED_SOURCE.target_path}::"
-            f"{P400_MEMORY_AUTHORIZED_SOURCE.target_symbol}"
-        ),
-        patch_diff=proposal.patch + "\n" + memory_proposal.patch,
-        patch_digest=_sha256_bytes(
-            (proposal.patch + "\n" + memory_proposal.patch).encode()
-        ),
+        repair_target="; ".join(targets),
+        patch_diff=str(repair.derived_patch),
+        patch_digest=P400_RECORDED_PATCH_DIGEST,
         source_identity="PASS",
         patch_application="PASS",
         compilation="PASS",
@@ -813,28 +775,136 @@ async def run_p400_verified_proof(
 
 def _load_p400_recorded_evidence(
     root: Path,
-) -> tuple[P400LiveEvidence, P400LiveRepairEvidence]:
+) -> tuple[
+    P400LiveEvidence,
+    P400LiveRepairEvidence,
+    P400LiveProofEvidence,
+    list[ValidatedEditArtifact],
+    dict[str, Any],
+]:
+    manifest_path = root / P400_RECORDED_MANIFEST_PATH
+    manifest = json.loads(manifest_path.read_text())
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schema_version") != "gauntlet.p400-recorded-success.v1"
+        or manifest.get("patch_digest") != P400_RECORDED_PATCH_DIGEST
+        or manifest.get("final_status") != "VERIFIED"
+        or manifest.get("deterministic_matrix_status") != "PASS"
+    ):
+        raise ValueError("recorded P400 success manifest is invalid")
     attack_path = root / P400_LIVE_ATTACK_PATH
     repair_path = root / P400_LIVE_REPAIR_PATH
+    proof_path = root / P400_LIVE_PROOF_PATH
     attack_bytes = attack_path.read_bytes()
     repair_bytes = repair_path.read_bytes()
-    if _sha256_bytes(attack_bytes) != P400_LIVE_ATTACK_SHA256:
-        raise ValueError("retained P400 live attack evidence digest mismatch")
-    if _sha256_bytes(repair_bytes) != P400_LIVE_REPAIR_SHA256:
-        raise ValueError("retained P400 live repair evidence digest mismatch")
+    proof_bytes = proof_path.read_bytes()
+    for key, path, content in (
+        ("attack", attack_path, attack_bytes),
+        ("repair", repair_path, repair_bytes),
+        ("proof", proof_path, proof_bytes),
+    ):
+        entry = manifest.get(key)
+        try:
+            relative_path = path.relative_to(root / P400_RECORDED_DIRECTORY)
+        except ValueError as exc:
+            raise ValueError(
+                f"recorded P400 {key} evidence digest mismatch"
+            ) from exc
+        if (
+            not isinstance(entry, dict)
+            or entry.get("path") != relative_path.as_posix()
+            or entry.get("file_sha256") != _sha256_bytes(content)
+        ):
+            raise ValueError(f"recorded P400 {key} evidence digest mismatch")
     attack = P400LiveEvidence.model_validate_json(attack_bytes)
     repair = P400LiveRepairEvidence.model_validate_json(repair_bytes)
+    proof = P400LiveProofEvidence.model_validate_json(proof_bytes)
+    for key, evidence in (("attack", attack), ("repair", repair), ("proof", proof)):
+        entry = manifest[key]
+        if (
+            entry.get("run_id") != evidence.run_id
+            or entry.get("provider") != evidence.provider
+            or entry.get("model") != evidence.model
+            or entry.get("integrity_digest") != evidence.integrity_digest
+        ):
+            raise ValueError(f"recorded P400 {key} manifest identity mismatch")
     if (
-        attack.final_status != "DETECTED"
+        manifest["repair"].get("source_live_attack_run_id") != attack.run_id
+        or manifest["proof"].get("source_live_repair_run_id") != repair.run_id
+        or manifest.get("combined_candidate_digest")
+        != repair.combined_candidate_digest
+    ):
+        raise ValueError("recorded P400 manifest chain is invalid")
+    edit_entries = manifest.get("validated_edits")
+    if not isinstance(edit_entries, list) or len(edit_entries) != 2:
+        raise ValueError("recorded P400 validated edits are incomplete")
+    edits: list[ValidatedEditArtifact] = []
+    for entry in edit_entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise ValueError("recorded P400 edit manifest is invalid")
+        path = (root / P400_RECORDED_DIRECTORY / entry["path"]).resolve()
+        recorded_root = (root / P400_RECORDED_DIRECTORY).resolve()
+        if not path.is_relative_to(recorded_root) or path.suffix != ".json":
+            raise ValueError("recorded P400 edit path escapes its evidence root")
+        if entry.get("file_sha256") != _sha256_bytes(path.read_bytes()):
+            raise ValueError("recorded P400 edit evidence digest mismatch")
+        artifact = load_validated_edit_artifact(path)
+        key = f"{artifact.target_path}::{artifact.target_symbol}"
+        if (
+            artifact.run_id != repair.run_id
+            or entry.get("candidate_id") != artifact.edit_id
+            or entry.get("integrity_digest") != artifact.integrity_digest
+            or entry.get("patch_digest") != artifact.derived_patch_digest
+            or entry.get("target_path") != artifact.target_path
+            or entry.get("target_symbol") != artifact.target_symbol
+            or repair.derived_patches.get(key) != artifact.derived_patch
+            or repair.per_edit_patch_digests.get(key)
+            != artifact.derived_patch_digest
+        ):
+            raise ValueError("recorded P400 edit does not belong to the repair")
+        edits.append(artifact)
+    if {Path(value).name for value in repair.edit_artifacts} != {
+        Path(str(entry["path"])).name for entry in edit_entries
+    }:
+        raise ValueError("recorded P400 repair references different edit artifacts")
+    assessment = repair.sandbox_assessment
+    if (
+        attack.run_id != P400_RECORDED_ATTACK_RUN_ID
+        or repair.run_id != P400_RECORDED_REPAIR_RUN_ID
+        or proof.run_id != P400_RECORDED_PROOF_RUN_ID
+        or attack.final_status != "DETECTED"
         or attack.provider_request_count != 1
-        or repair.source_live_attack_digest != P400_LIVE_ATTACK_SHA256
+        or repair.source_live_attack_digest != _sha256_bytes(attack_bytes)
         or repair.source_live_attack_run_id != attack.run_id
-        or repair.live_repair_status != "REJECTED"
-        or repair.candidate_validation != "FAIL"
+        or repair.live_repair_status != "VERIFIED"
+        or repair.candidate_validation != "PASS"
         or repair.provider_request_count != 1
+        or repair.derived_patch_digest != P400_RECORDED_PATCH_DIGEST
+        or assessment is None
+        or assessment.source_identity != "PASS"
+        or assessment.patch_application is None
+        or not assessment.patch_application.passed
+        or assessment.compilation is None
+        or not assessment.compilation.passed
+        or assessment.cleanup != "PASS"
+        or assessment.repository_immutability != "PASS"
+        or proof.source_live_repair_run_id != repair.run_id
+        or proof.source_patch_digest != repair.derived_patch_digest
+        or proof.final_status != "VERIFIED"
+        or proof.live_post_repair != "PASS"
+        or proof.deterministic_matrix_status != "PASS"
+        or proof.provider_request_count != 1
+        or any(item.repository_immutability != "PASS" for item in (
+            attack, repair, proof,
+        ))
+        or any(item.credential_scan != "PASS" for item in (
+            attack, repair, proof,
+        ))
+        or set(manifest.get("candidate_ids", []))
+        != {item.edit_id for item in edits}
     ):
         raise ValueError("retained P400 live evidence relationship is invalid")
-    return attack, repair
+    return attack, repair, proof, edits, manifest
 
 
 def _sha256_bytes(value: bytes) -> str:

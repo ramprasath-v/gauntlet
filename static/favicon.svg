@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Gauntlet">
+  <path
+    d="M32 4 56 13v17c0 14-9.4 25.1-24 30C17.4 55.1 8 44 8 30V13Z"
+    fill="#08131a"
+    stroke="#22d3ee"
+    stroke-width="5"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M43.5 23.5a15 15 0 1 0 0 17M43.5 40.5V33H33"
+    fill="none"
+    stroke="#f8fafc"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

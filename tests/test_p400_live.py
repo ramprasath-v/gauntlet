@@ -205,7 +205,7 @@ def test_p400_live_never_switches_to_an_unapproved_model():
         NebiusP400LiveProvider(client)
 
 
-async def test_existing_deterministic_p400_proof_remains_zero_provider(
+async def test_recorded_p400_verified_replay_remains_zero_provider(
     monkeypatch,
 ):
     async def forbidden_complete(*args, **kwargs):
@@ -214,6 +214,7 @@ async def test_existing_deterministic_p400_proof_remains_zero_provider(
     monkeypatch.setattr(NebiusTokenFactoryClient, "complete", forbidden_complete)
     proof = await run_p400_verified_proof(ROOT)
 
-    assert proof.mode == "VERIFIED_PROOF"
+    assert proof.mode == "VERIFIED_REPLAY"
     assert proof.provider_requests == 0
+    assert proof.proof_provenance == "RECORDED_LIVE_PROOF"
     assert proof.verdict == "VERIFIED"

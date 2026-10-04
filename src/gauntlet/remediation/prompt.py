@@ -1,9 +1,11 @@
 """Two-call remediation prompts: one focused call for the source edit, one for the test."""
 import json
 
+from gauntlet.remediation.legal_spans import derive_legal_edit_spans
 from gauntlet.remediation.models import (
-    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
-    RemediationRequest,
+    GeneratedEditCandidate, GeneratedMultiEditCandidate,
+    GeneratedRepairCandidate, GeneratedTestCandidate,
+    MultiTargetRemediationRequest, RemediationRequest,
 )
 
 
@@ -103,8 +105,39 @@ the range is preserved exactly. Put each exact replacement line, including its
 indentation and without a line terminator, in `replacement_lines`. The
 reconstructed source must remain syntactically valid. Gauntlet will not repair
 a bad range, source, or indentation and will mechanically derive the diff.
+For a replacement or deletion, select an exact `start_line` and
+`delete_line_count` pair from `legal_edit_spans`. Never select only the header
+of an if, for, while, try, with, match, function, or class statement. When an
+assignment immediately precedes a compound statement, edit only the assignment
+unless intentionally replacing the compound statement's complete listed span.
 Return only standards-compliant JSON conforming exactly to the supplied schema,
 with no Markdown fences. Line-array elements may not contain LF or CR."""
+
+
+MULTI_TARGET_CONTRACT_EDIT_SYSTEM_PROMPT = """You are generating one bounded source-code repair for an authorized defensive security-contract violation.
+Gauntlet owns identity, provenance, source authorization, source integrity,
+application, and verification. The only authorized source boundaries are the
+two exact source_contexts supplied in the request. Return one or two edits,
+with at most one edit for each authorized path and symbol. Do not add, infer,
+or modify any other target. Address the complete stated security property,
+including persistent-memory ingestion and context consumption, while
+preserving every listed legitimate behavior. Do not encode fixture-specific
+answers or modify tests and verifiers.
+For each edit, copy target_path, target_symbol, and source_hash exactly from
+its source context. start_line is one-based relative to that symbol's bounded
+source_text. Choose exact ranges; Gauntlet will not expand, correct, format, or
+reinterpret them. Each range must contain complete Python constructs and must
+not split multiline expressions, strings, decorators, or compound statements.
+For a replacement or deletion, select an exact `start_line` and
+`delete_line_count` pair from that context's `legal_edit_spans`. Never select
+only the header of an if, for, while, try, with, match, function, or class
+statement. When changing an assignment immediately before a compound statement,
+edit only the assignment unless intentionally replacing the compound
+statement's complete listed span.
+Put every exact replacement line, including indentation and without LF or CR,
+in replacement_lines. Keep each edit to at most 120 replacement lines and the
+combined rationale to at most 100 words. Return only strict JSON matching the
+supplied schema, with no Markdown."""
 
 
 CONTRACT_TEST_SYSTEM_PROMPT = """You are generating a regression test for an authorized defensive security-contract repair.
@@ -175,9 +208,46 @@ def build_edit_messages(request: RemediationRequest) -> list[dict[str, str]]:
                 request.source_context.source_text.splitlines(), start=1
             )
         ]
+        payload["legal_edit_spans"] = [
+            item.model_dump(mode="json")
+            for item in derive_legal_edit_spans(
+                request.source_context.source_text
+            )
+        ]
     payload["required_output_schema"] = GeneratedEditCandidate.model_json_schema()
     return [
         {"role": "system", "content": _edit_prompt(request)},
+        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+    ]
+
+
+def build_multi_target_edit_messages(
+    request: MultiTargetRemediationRequest,
+) -> list[dict[str, str]]:
+    payload = request.model_dump(mode="json")
+    payload["source_contexts_line_numbered"] = [
+        {
+            "target_path": context.repository_relative_path,
+            "target_symbol": context.target_symbol,
+            "source_hash": context.source_hash,
+            "lines": [
+                {"symbol_relative_line": index, "source": line}
+                for index, line in enumerate(
+                    context.source_text.splitlines(), start=1
+                )
+            ],
+            "legal_edit_spans": [
+                item.model_dump(mode="json")
+                for item in derive_legal_edit_spans(context.source_text)
+            ],
+        }
+        for context in request.source_contexts
+    ]
+    payload["required_output_schema"] = (
+        GeneratedMultiEditCandidate.model_json_schema()
+    )
+    return [
+        {"role": "system", "content": MULTI_TARGET_CONTRACT_EDIT_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
 

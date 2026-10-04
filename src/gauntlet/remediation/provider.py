@@ -8,12 +8,14 @@ from gauntlet.llm.nebius import (
     NebiusTokenFactoryClient,
 )
 from gauntlet.remediation.models import (
-    GeneratedEditCandidate, GeneratedRepairCandidate, GeneratedTestCandidate,
-    RemediationRequest,
+    GeneratedEditCandidate, GeneratedMultiEditCandidate,
+    GeneratedRepairCandidate, GeneratedTestCandidate,
+    MultiTargetRemediationRequest, RemediationRequest,
 )
 from gauntlet.remediation.prompt import (
     build_edit_messages, build_edit_revision_messages,
-    build_live_demo_messages, build_test_messages, build_test_revision_messages,
+    build_live_demo_messages, build_multi_target_edit_messages,
+    build_test_messages, build_test_revision_messages,
 )
 from gauntlet.remediation.retry_models import SafeProviderCompletion
 
@@ -21,6 +23,7 @@ from gauntlet.remediation.retry_models import SafeProviderCompletion
 EDIT_SCHEMA_NAME = "edit_candidate"
 TEST_SCHEMA_NAME = "test_candidate"
 LIVE_DEMO_SCHEMA_NAME = "repair_candidate"
+MULTI_EDIT_SCHEMA_NAME = "multi_edit_candidate"
 
 
 class RemediationProvider(Protocol):
@@ -70,6 +73,16 @@ class NebiusNemotronRemediationProvider:
             build_edit_messages(request),
             response_schema=GeneratedEditCandidate.model_json_schema(),
             schema_name=EDIT_SCHEMA_NAME,
+            max_tokens=self.max_edit_tokens,
+        )
+
+    async def generate_multi_edit(
+        self, request: MultiTargetRemediationRequest,
+    ) -> str:
+        return await self._complete(
+            build_multi_target_edit_messages(request),
+            response_schema=GeneratedMultiEditCandidate.model_json_schema(),
+            schema_name=MULTI_EDIT_SCHEMA_NAME,
             max_tokens=self.max_edit_tokens,
         )
 

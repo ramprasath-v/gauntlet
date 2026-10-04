@@ -1,0 +1,49 @@
+{
+  "schema_version": "gauntlet.repair-edit-evidence.v1",
+  "edit_id": "756e6551-92ff-4a75-8108-4382f1996f4f",
+  "run_id": "d2bb7191-7450-47b3-bf8c-d534a46c75e6",
+  "originating_attempt": 1,
+  "provider": "nebius_token_factory",
+  "model": "moonshotai/Kimi-K2.7-Code",
+  "created_at": "2026-10-04T07:53:37.778382Z",
+  "trace_id": "8edbbe1c-2328-4679-ae8c-773f7c1254f5",
+  "boundary_id": "b1c60f4f-5435-4d7e-85cd-228d4ac7da6c",
+  "evidence_ids": [
+    "73134941-8bd7-4ebf-9a38-99ec4fa6a73a",
+    "429021cf-8e42-4efc-9d06-0fee3093bbaf",
+    "503f6f53-5cef-433b-b6ef-2d67b7cde2b6"
+  ],
+  "target_path": "victims/personalization/memory.py",
+  "target_symbol": "PersonalMemoryStore.ingest",
+  "source_hash": "110a8c467e980fd13d12689f54bc31cd05e6c4cd184882eeae7726ce64eee125",
+  "rationale": "The violation occurs because agent.py emits an IDENTITY_CONTEXT and includes it in MODEL_OUTPUT input_event_ids without verifying that the item's personalization_dimension is in activated_personalization_dimensions, that the item/grant subjects match the active principal, that the grant purpose/state match, and that the provenance/policy/context IDs match an active grant. Also memory.py marks every ingested item eligible_for_personalization unconditionally, even from untrusted sources. We add authorization binding checks in agent.py before emitting context events, and gate eligible_for_personalization on source trust in memory.py.",
+  "source_edit": {
+    "target_path": "victims/personalization/memory.py",
+    "target_symbol": "PersonalMemoryStore.ingest",
+    "source_hash": "110a8c467e980fd13d12689f54bc31cd05e6c4cd184882eeae7726ce64eee125",
+    "start_line": 48,
+    "delete_line_count": 3,
+    "replacement_lines": [
+      "        eligible_for_personalization = source_trust == TrustClassification.TRUSTED",
+      "        if eligible_for_personalization:",
+      "            self._contexts[stored.context_id] = stored"
+    ]
+  },
+  "optional_policy_artifact": null,
+  "trusted_original_lines": [
+    "        eligible_for_personalization = True",
+    "        if eligible_for_personalization:",
+    "            self._contexts[stored.context_id] = stored"
+  ],
+  "derived_patch": "--- a/victims/personalization/memory.py\n+++ b/victims/personalization/memory.py\n@@ -74,7 +74,7 @@\n             input_event_ids=[source_event.event_id],\n             metadata={\"ingestion_run_id\": run_id},\n         )\n-        eligible_for_personalization = True\n+        eligible_for_personalization = source_trust == TrustClassification.TRUSTED\n         if eligible_for_personalization:\n             self._contexts[stored.context_id] = stored\n         result = NormalizedExecutionEvent(\n",
+  "validation_result": "PASS",
+  "edit_candidate_digest": "be91241433d59393f8500a82acf1d8e97f723e7a25bd87a291ef5017c4f6f20f",
+  "edit_field_digests": {
+    "rationale": "df6c325c8e75bab6fb81d22ba8692fa977551ed0de08822aa8ebe98702459641",
+    "source_edit": "3bee401f99faff766586ae5ba2cfa846a1083ff6ea98260ca59558446d00097b",
+    "optional_policy_artifact": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+  },
+  "trusted_original_lines_digest": "85d074fa41041b60a7c85439d9c4d54d85115cdfa813b04754970a4838e1eb25",
+  "derived_patch_digest": "ee1428b39eb938972bbfd9f9fe9d7f94ee0cf6b800efba7727cce788859ac92e",
+  "integrity_digest": "3212fc428e34dc32ca4fd841a0201979201adedacc057bf0629f76a4de464cb5"
+}

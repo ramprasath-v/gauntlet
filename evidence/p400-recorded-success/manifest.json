@@ -1,0 +1,57 @@
+{
+  "attack": {
+    "file_sha256": "25336fd10aac23c3b4a55a107d4acc3d8e45821731d3287bbeb73b3f0c3440cb",
+    "integrity_digest": "42f1f22acf1919838cc6c21780de58f19f25a83854a570b8ec8fd2d007f5f45e",
+    "model": "nvidia/nemotron-3-super-120b-a12b",
+    "path": "attack.json",
+    "provider": "nebius_token_factory",
+    "run_id": "8edbbe1c-2328-4679-ae8c-773f7c1254f5"
+  },
+  "candidate_ids": [
+    "756e6551-92ff-4a75-8108-4382f1996f4f",
+    "e8da374f-e7aa-428a-8b68-67150ec3f952"
+  ],
+  "combined_candidate_digest": "d9f14d07e81342fa395eeb74cb825a1f15927da24ea5fa3362d020f6f484eeb9",
+  "deterministic_matrix_status": "PASS",
+  "final_status": "VERIFIED",
+  "patch_digest": "19ed65221df52c02c38f6b25be0668abd9758c3614bdca910f1a4728de54bf16",
+  "proof": {
+    "file_sha256": "c65efdea9951da8447b51951e3b7f9a255624424b0f97bc229cad0d055ba3e6d",
+    "integrity_digest": "ae3243c0e4e71b57ddd95e06ff89f1c4d3e0d977d50239fc57fc962524122510",
+    "model": "nvidia/nemotron-3-super-120b-a12b",
+    "path": "proof.json",
+    "provider": "nebius_token_factory",
+    "run_id": "f627da99-6835-4aed-8b76-f17bab4bb9b2",
+    "source_live_repair_run_id": "d2bb7191-7450-47b3-bf8c-d534a46c75e6"
+  },
+  "repair": {
+    "file_sha256": "b610ecdaca3ee924210903aec585caa9aaea3f0f38bbc85c0b973ae657781a18",
+    "integrity_digest": "a8a739f6c7ed35d82683cc68bda9fa1b6b9cf96778048d7b65a28ff8bcd97c98",
+    "model": "moonshotai/Kimi-K2.7-Code",
+    "path": "repair.json",
+    "provider": "nebius_token_factory",
+    "run_id": "d2bb7191-7450-47b3-bf8c-d534a46c75e6",
+    "source_live_attack_run_id": "8edbbe1c-2328-4679-ae8c-773f7c1254f5"
+  },
+  "schema_version": "gauntlet.p400-recorded-success.v1",
+  "validated_edits": [
+    {
+      "candidate_id": "756e6551-92ff-4a75-8108-4382f1996f4f",
+      "file_sha256": "e1db88696af23de9af57bd1f315fb5b6d4330c878a28226fb5fea11f46cbd694",
+      "integrity_digest": "3212fc428e34dc32ca4fd841a0201979201adedacc057bf0629f76a4de464cb5",
+      "patch_digest": "ee1428b39eb938972bbfd9f9fe9d7f94ee0cf6b800efba7727cce788859ac92e",
+      "path": "edits/attempt-01-756e6551-92ff-4a75-8108-4382f1996f4f.json",
+      "target_path": "victims/personalization/memory.py",
+      "target_symbol": "PersonalMemoryStore.ingest"
+    },
+    {
+      "candidate_id": "e8da374f-e7aa-428a-8b68-67150ec3f952",
+      "file_sha256": "8baede95b61bbbfdbc60d34de606716dc80236839cf3e15bff4d8116dfa0af6f",
+      "integrity_digest": "091db5a907e5912a767d107dc2acdaa097cbe4812260117bbe8bc968129c49e3",
+      "patch_digest": "72c34f2766ff2a97fed1985791c9f227254530ab3cb9659ac120e5c7866abe20",
+      "path": "edits/attempt-01-e8da374f-e7aa-428a-8b68-67150ec3f952.json",
+      "target_path": "victims/personalization/agent.py",
+      "target_symbol": "PersonalizationAgent.respond"
+    }
+  ]
+}

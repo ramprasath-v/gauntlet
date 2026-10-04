@@ -13,6 +13,7 @@ from gauntlet.contracts.models import (
 )
 from gauntlet.remediation.context import build_authorized_source_context
 from gauntlet.remediation.models import (
+    MultiTargetRemediationRequest,
     RemediationRequest,
     RepairContext,
     SourceContext,
@@ -66,6 +67,48 @@ class ContractRepairRequest(StrictModel):
         return self
 
 
+class MultiTargetContractRepairRequest(StrictModel):
+    """Versioned generic request for at most two explicitly trusted boundaries."""
+
+    request_id: str = Field(default_factory=lambda: str(uuid4()))
+    contract: SecurityContract
+    violation: ContractEvaluation
+    counterexample_trace: NormalizedExecutionTrace
+    source_contexts: list[SourceContext] = Field(min_length=2, max_length=2)
+    expected_security_property: str = Field(min_length=1, max_length=2_000)
+    legitimate_behaviors_to_preserve: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def identities_and_evidence_match(self) -> "MultiTargetContractRepairRequest":
+        UUID(self.request_id)
+        if self.violation.status != ContractStatus.VIOLATED:
+            raise ValueError("repair requests require a violated contract result")
+        if self.violation.contract_id != self.contract.contract_id:
+            raise ValueError("repair request contract identity mismatch")
+        if self.violation.trace_id != self.counterexample_trace.trace_id:
+            raise ValueError("repair request trace identity mismatch")
+        trace_event_ids = {event.event_id for event in self.counterexample_trace.events}
+        evidence_ids = {
+            event_id
+            for evidence in self.violation.evidence
+            for event_id in evidence.event_ids
+        }
+        if not evidence_ids or not evidence_ids <= trace_event_ids:
+            raise ValueError("repair request violation evidence is not in the trace")
+        targets = []
+        for source in self.source_contexts:
+            if source.trace_id != self.counterexample_trace.trace_id:
+                raise ValueError("repair request source trace identity mismatch")
+            if source.boundary_id != self.request_id:
+                raise ValueError("repair request source boundary identity mismatch")
+            if set(source.evidence_ids) != evidence_ids:
+                raise ValueError("repair request source evidence identity mismatch")
+            targets.append((source.repository_relative_path, source.target_symbol))
+        if len(set(targets)) != len(targets):
+            raise ValueError("repair request source boundaries must be unique")
+        return self
+
+
 def build_contract_repair_request(
     *,
     contract: SecurityContract,
@@ -102,6 +145,47 @@ def build_contract_repair_request(
     )
 
 
+def build_multi_target_contract_repair_request(
+    *,
+    contract: SecurityContract,
+    violation: ContractEvaluation,
+    counterexample_trace: NormalizedExecutionTrace,
+    authorized_sources: list[AuthorizedSourceBoundary],
+    expected_security_property: str,
+    legitimate_behaviors_to_preserve: list[str],
+    repository_root: Path,
+) -> MultiTargetContractRepairRequest:
+    """Bind exactly two caller-authorized symbols without inferring targets."""
+    if len(authorized_sources) != 2:
+        raise ValueError("multi-target repair requires exactly two boundaries")
+    request_id = str(uuid4())
+    evidence_ids = list(dict.fromkeys(
+        event_id
+        for evidence in violation.evidence
+        for event_id in evidence.event_ids
+    ))
+    contexts = [
+        build_authorized_source_context(
+            repository_root,
+            target_path=boundary.target_path,
+            target_symbol=boundary.target_symbol,
+            trace_id=counterexample_trace.trace_id,
+            boundary_id=request_id,
+            evidence_ids=evidence_ids,
+        )
+        for boundary in authorized_sources
+    ]
+    return MultiTargetContractRepairRequest(
+        request_id=request_id,
+        contract=contract,
+        violation=violation,
+        counterexample_trace=counterexample_trace,
+        source_contexts=contexts,
+        expected_security_property=expected_security_property,
+        legitimate_behaviors_to_preserve=legitimate_behaviors_to_preserve,
+    )
+
+
 def to_remediation_request(
     request: ContractRepairRequest, *, provider: str, model: str,
 ) -> RemediationRequest:
@@ -122,6 +206,42 @@ def to_remediation_request(
         ),
         evidence_summary={
             "request_kind": "contract_violation",
+            "contract": request.contract.model_dump(mode="json"),
+            "violation": request.violation.model_dump(mode="json"),
+            "counterexample_trace": request.counterexample_trace.model_dump(
+                mode="json"
+            ),
+            "expected_security_property": request.expected_security_property,
+            "legitimate_behaviors_to_preserve": (
+                request.legitimate_behaviors_to_preserve
+            ),
+        },
+    )
+
+
+def to_multi_target_remediation_request(
+    request: MultiTargetContractRepairRequest, *, provider: str, model: str,
+) -> MultiTargetRemediationRequest:
+    """Adapt a bounded request without dropping or adding authorized targets."""
+    repair_contexts = [
+        RepairContext(
+            trace_id=source.trace_id,
+            boundary_id=source.boundary_id,
+            evidence_ids=source.evidence_ids,
+            provider=provider,
+            model=model,
+            target_path=source.repository_relative_path,
+            target_symbol=source.target_symbol,
+            source_hash=source.source_hash,
+            failure_type=request.contract.contract_id,
+        )
+        for source in request.source_contexts
+    ]
+    return MultiTargetRemediationRequest(
+        source_contexts=request.source_contexts,
+        repair_contexts=repair_contexts,
+        evidence_summary={
+            "request_kind": "multi_target_contract_violation",
             "contract": request.contract.model_dump(mode="json"),
             "violation": request.violation.model_dump(mode="json"),
             "counterexample_trace": request.counterexample_trace.model_dump(

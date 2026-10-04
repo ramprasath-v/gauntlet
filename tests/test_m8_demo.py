@@ -262,6 +262,22 @@ async def test_product_flow_page_loads_and_communicates_demo_scope():
     assert "COMING NEXT" not in page
 
 
+async def test_judge_console_serves_its_svg_favicon():
+    app = create_m8_demo_app(ROOT)
+    page = await get(app, "/")
+    favicon = await get(app, "/favicon.svg")
+
+    assert page.status_code == 200
+    assert "<title>Gauntlet — Agent Security</title>" in page.text
+    assert '<link rel="icon" href="/favicon.svg" type="image/svg+xml">' in (
+        page.text
+    )
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"].startswith("image/svg+xml")
+    assert favicon.text.startswith("<svg")
+    assert "Gauntlet" in favicon.text
+
+
 async def test_multi_scenario_navigation_and_tools_are_rendered():
     page = (await get(create_m8_demo_app(ROOT), "/")).text
 
@@ -813,7 +829,7 @@ async def test_p400_verified_proof_api_is_provider_free_and_complete(monkeypatch
     assert response.status_code == 200
     proof = response.json()
     assert provider_calls == []
-    assert proof["mode"] == "VERIFIED_PROOF"
+    assert proof["mode"] == "VERIFIED_REPLAY"
     assert proof["provider_requests"] == 0
     assert proof["attack_result"] == "VIOLATED"
     assert proof["failed_authorization_dimensions"] == [
@@ -823,15 +839,36 @@ async def test_p400_verified_proof_api_is_provider_free_and_complete(monkeypatch
     assert proof["recorded_attack"]["execution_mode"] == "RECORDED_LIVE_ATTACK"
     assert proof["recorded_attack"]["provider_requests"] == 1
     assert proof["recorded_attack"]["http_status"] == 200
-    assert proof["recorded_attack"]["model"] == "moonshotai/Kimi-K2.7-Code"
+    assert proof["recorded_attack"]["run_id"] == (
+        "8edbbe1c-2328-4679-ae8c-773f7c1254f5"
+    )
+    assert proof["recorded_attack"]["model"] == (
+        "nvidia/nemotron-3-super-120b-a12b"
+    )
     assert proof["recorded_attack"]["verdict"] == "VIOLATED"
     assert proof["recorded_repair"]["execution_mode"] == "RECORDED_LIVE_REPAIR"
     assert proof["recorded_repair"]["provider_requests"] == 1
-    assert proof["recorded_repair"]["result"] == "REJECTED"
-    assert proof["recorded_repair"]["failure_code"] == (
-        "edit_range_splits_python_construct"
+    assert proof["recorded_repair"]["run_id"] == (
+        "d2bb7191-7450-47b3-bf8c-d534a46c75e6"
     )
-    assert proof["proof_provenance"] == "INDEPENDENT_PATCH"
+    assert proof["recorded_repair"]["result"] == "VERIFIED"
+    assert proof["recorded_repair"]["candidate_validation"] == "PASS"
+    assert set(proof["recorded_repair"]["candidate_ids"]) == {
+        "e8da374f-e7aa-428a-8b68-67150ec3f952",
+        "756e6551-92ff-4a75-8108-4382f1996f4f",
+    }
+    assert proof["recorded_proof"]["run_id"] == (
+        "f627da99-6835-4aed-8b76-f17bab4bb9b2"
+    )
+    assert proof["recorded_proof"]["model"] == (
+        "nvidia/nemotron-3-super-120b-a12b"
+    )
+    assert proof["recorded_proof"]["final_status"] == "VERIFIED"
+    assert proof["recorded_proof"]["deterministic_matrix_status"] == "PASS"
+    assert proof["proof_provenance"] == "RECORDED_LIVE_PROOF"
+    assert proof["patch_digest"] == (
+        "19ed65221df52c02c38f6b25be0668abd9758c3614bdca910f1a4728de54bf16"
+    )
     assert proof["canonical_reattack"] == "PASS"
     assert proof["authorized_personalization"] == "PRESERVED"
     assert proof["authorized_context_lineage"] == "PRESERVED"
@@ -846,6 +883,35 @@ async def test_p400_verified_proof_api_is_provider_free_and_complete(monkeypatch
     assert proof["no_context_control"] == "PASS"
     assert proof["verdict"] == "VERIFIED"
     assert proof["repository_immutability"] == "PASS"
+
+
+def test_p400_recorded_success_manifest_binds_the_exact_verified_chain():
+    manifest = json.loads(
+        (ROOT / m8_module.P400_RECORDED_MANIFEST_PATH).read_text()
+    )
+
+    assert manifest["schema_version"] == "gauntlet.p400-recorded-success.v1"
+    assert manifest["attack"]["run_id"] == (
+        "8edbbe1c-2328-4679-ae8c-773f7c1254f5"
+    )
+    assert manifest["repair"]["run_id"] == (
+        "d2bb7191-7450-47b3-bf8c-d534a46c75e6"
+    )
+    assert manifest["proof"]["run_id"] == (
+        "f627da99-6835-4aed-8b76-f17bab4bb9b2"
+    )
+    assert manifest["repair"]["source_live_attack_run_id"] == (
+        manifest["attack"]["run_id"]
+    )
+    assert manifest["proof"]["source_live_repair_run_id"] == (
+        manifest["repair"]["run_id"]
+    )
+    assert manifest["patch_digest"] == (
+        "19ed65221df52c02c38f6b25be0668abd9758c3614bdca910f1a4728de54bf16"
+    )
+    assert manifest["final_status"] == "VERIFIED"
+    assert manifest["deterministic_matrix_status"] == "PASS"
+    assert len(manifest["validated_edits"]) == 2
 
 
 async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
@@ -865,7 +931,7 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     )
     assert "LOAD RECORDED EVIDENCE" in p400
     assert "VIEW RECORDED LIVE REPAIR" in p400
-    assert "VIEW VERIFIED PATCH &amp; PROOF" in p400
+    assert "VIEW RECORDED VERIFIED PROOF" in p400
     assert "VIOLATED" in p400
     assert "UNJUSTIFIED PERSONALIZATION" in p400
     assert (
@@ -876,15 +942,14 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     assert "PERSONAL MEMORY" in p400
     assert "SENT TO LIVE MODEL" in p400
     assert "personalization dimension was not activated" in p400
-    assert "GAUNTLET VALIDATION REJECTED" in p400
-    assert "Unsafe edit boundary rejected" in p400
-    assert "edit_range_splits_python_construct" in page
+    assert "AI REPAIR — VERIFIED" in p400
+    assert "Exact retained candidate accepted" in p400
     assert "Authorize personal context before it enters the model context" not in p400
     assert "Unauthorized context" in p400
     assert "Authorized context" in p400
-    assert "VERIFIED_PROOF" in p400
-    assert "Provider requests: <b>0</b>" in p400
-    assert "INDEPENDENT PATCH" in p400
+    assert "VERIFIED_REPLAY" in p400
+    assert "Current session provider requests: <b>0</b>" in p400
+    assert "RECORDED LIVE PROOF" in p400
     assert "Three P400 attack families" in p400
     assert 'id="p400-attack-families"' in p400
     assert "Wrong person's memory" in page
@@ -893,8 +958,8 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
         "Gauntlet blocks unsafe personalization without disabling legitimate "
         "personalization." in p400
     )
-    assert "LIVE AI REPAIR · REJECTED" in p400
-    assert "VERIFIED PROOF · INDEPENDENT PATCH" in p400
+    assert "RECORDED LIVE AI REPAIR" in p400
+    assert "VERIFIED REPLAY · RECORDED LIVE PROOF" in p400
 
 
 async def test_p400_scenario_selection_exposes_its_sibling_panel_and_button():
@@ -923,13 +988,17 @@ async def test_p400_browser_path_uses_the_canonical_verified_proof_response():
     page = (await get(create_m8_demo_app(ROOT), "/")).text
 
     assert "fetch('/api/p400')" in page
-    assert "d.mode!=='VERIFIED_PROOF'||d.provider_requests!==0" in page
+    assert "d.mode!=='VERIFIED_REPLAY'||d.provider_requests!==0" in page
     assert "d.recorded_attack.execution_mode!=='RECORDED_LIVE_ATTACK'" in page
-    assert "d.recorded_repair.result!=='REJECTED'" in page
+    assert "d.recorded_repair.result!=='VERIFIED'" in page
+    assert "d.recorded_proof.final_status!=='VERIFIED'" in page
     assert "d.mixed_context_unauthorized" in page
     assert "d.mixed_context_authorized" in page
     assert "d.patch_diff" in page
-    assert "P400 VERIFIED_PROOF · INDEPENDENT PATCH · ZERO PROVIDER REQUESTS" in page
+    assert (
+        "P400 VERIFIED REPLAY · RECORDED LIVE PROOF · ZERO PROVIDER REQUESTS"
+        in page
+    )
 
 
 async def test_p400_proof_exposes_exact_repair_and_policy_receipt():
@@ -946,8 +1015,8 @@ async def test_p400_proof_exposes_exact_repair_and_policy_receipt():
     assert "victims/personalization/memory.py::PersonalMemoryStore.ingest" in (
         proof.repair_target
     )
-    assert "authorized_context_items = tuple(" in proof.patch_diff
-    assert "for item in authorized_context_items:" in proof.patch_diff
+    assert "active_grants = [" in proof.patch_diff
+    assert "matching_grants = [" in proof.patch_diff
     assert "source_trust == TrustClassification.TRUSTED" in proof.patch_diff
     assert proof.source_identity == "PASS"
     assert proof.patch_application == "PASS"
@@ -956,20 +1025,24 @@ async def test_p400_proof_exposes_exact_repair_and_policy_receipt():
 
 
 async def test_p400_retained_evidence_is_integrity_checked_and_unchanged():
-    paths = [
-        ROOT / m8_module.P400_LIVE_ATTACK_PATH,
-        ROOT / m8_module.P400_LIVE_REPAIR_PATH,
-    ]
+    manifest_path = ROOT / m8_module.P400_RECORDED_MANIFEST_PATH
+    manifest = json.loads(manifest_path.read_text())
+    paths = [manifest_path]
+    paths.extend(
+        ROOT / m8_module.P400_RECORDED_DIRECTORY / manifest[key]["path"]
+        for key in ("attack", "repair", "proof")
+    )
+    paths.extend(
+        ROOT / m8_module.P400_RECORDED_DIRECTORY / item["path"]
+        for item in manifest["validated_edits"]
+    )
     before = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths]
 
     response = await get(create_m8_demo_app(ROOT), "/api/p400")
 
     after = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths]
     assert response.status_code == 200
-    assert before == after == [
-        m8_module.P400_LIVE_ATTACK_SHA256,
-        m8_module.P400_LIVE_REPAIR_SHA256,
-    ]
+    assert before == after
 
 
 async def test_p400_missing_or_corrupt_evidence_fails_without_live_claim(

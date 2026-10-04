@@ -20,12 +20,13 @@ from gauntlet.core.config import NebiusConfig
 from gauntlet.llm.nebius import NebiusTokenFactoryClient
 from gauntlet.remediation.models import (
     GeneratedEditCandidate,
+    GeneratedMultiEditCandidate,
     StructuredSourceEdit,
 )
-from gauntlet.remediation.contract_handoff import to_remediation_request
-from gauntlet.remediation.prompt import build_edit_messages
+from gauntlet.remediation.contract_handoff import to_multi_target_remediation_request
+from gauntlet.remediation.prompt import build_multi_target_edit_messages
 from gauntlet.remediation.provider import (
-    EDIT_SCHEMA_NAME,
+    MULTI_EDIT_SCHEMA_NAME,
     NebiusNemotronRemediationProvider,
 )
 from gauntlet.sandbox.workspace import repository_digest
@@ -51,11 +52,11 @@ class CandidateProvider:
         self.kind = kind
         self.requests = []
 
-    async def generate_edit(self, request):
+    async def generate_multi_edit(self, request):
         self.requests.append(request)
         if self.kind == "malformed":
             return "not-json"
-        source = request.source_context
+        source, memory_source = request.source_contexts
         lines = source.source_text.splitlines()
         loop = lines.index("        for item in context_items:") + 1
         start = lines.index("        context_event_ids: list[str] = []") + 1
@@ -138,9 +139,33 @@ class CandidateProvider:
                     *loop_body,
                 ],
             )
-        return GeneratedEditCandidate(
+        memory_lines = memory_source.source_text.splitlines()
+        memory_start = memory_lines.index(
+            "        eligible_for_personalization = True"
+        ) + 1
+        agent_edit = GeneratedEditCandidate(
             rationale="Enforce the supplied contract at the context boundary.",
             source_edit=StructuredSourceEdit(**updates),
+            optional_policy_artifact=None,
+        ).source_edit
+        memory_edit = StructuredSourceEdit(
+            target_path=memory_source.repository_relative_path,
+            target_symbol=memory_source.target_symbol,
+            source_hash=memory_source.source_hash,
+            start_line=memory_start,
+            delete_line_count=1,
+            replacement_lines=[
+                "        eligible_for_personalization = (",
+                "            source_trust == TrustClassification.TRUSTED",
+                "        )",
+            ],
+        )
+        return GeneratedMultiEditCandidate(
+            rationale=(
+                "Enforce per-item authorization: skip unauthorized context at both "
+                "bounded sources."
+            ),
+            source_edits=[agent_edit, memory_edit],
             optional_policy_artifact=None,
         ).model_dump_json()
 
@@ -166,21 +191,32 @@ async def test_one_call_live_repair_uses_generic_request_and_all_p400_gates(tmp_
     restored = P400LiveRepairEvidence.model_validate_json(path.read_text())
 
     assert restored == evidence
+    assert "authorization: skip unauthorized context" in evidence.provider_output
+    assert path.is_file()
     assert len(provider.requests) == evidence.provider_request_count == 1
     assert evidence.automatic_retries == 0
     assert evidence.model_switches == 0
     assert evidence.contract_request == build_live_p400_repair_request(
         live_attack=load_p400_live_attack(LIVE_ATTACK), repository_root=ROOT
     ).model_copy(update={"request_id": evidence.contract_request.request_id,
-                         "source_context": evidence.contract_request.source_context})
-    assert evidence.contract_request.source_context.repository_relative_path == (
+                         "source_contexts": evidence.contract_request.source_contexts})
+    assert evidence.contract_request.source_contexts[0].repository_relative_path == (
         "victims/personalization/agent.py"
     )
-    assert evidence.contract_request.source_context.target_symbol == (
+    assert evidence.contract_request.source_contexts[0].target_symbol == (
         "PersonalizationAgent.respond"
     )
+    assert evidence.contract_request.source_contexts[1].target_symbol == (
+        "PersonalMemoryStore.ingest"
+    )
     assert evidence.candidate_validation == "PASS"
+    assert len(evidence.edit_artifacts) == 2
+    assert len(evidence.derived_patches) == 2
+    assert len(evidence.per_edit_patch_digests) == 2
+    assert evidence.combined_candidate_digest
     assert evidence.sandbox_assessment is not None
+    assert evidence.sandbox_assessment.patch_digest == evidence.derived_patch_digest
+    assert evidence.sandbox_assessment.patch_application.passed
     assert evidence.sandbox_assessment.verdict == "VERIFIED"
     assert evidence.live_repair_status == "VERIFIED"
     cases = {
@@ -285,14 +321,16 @@ async def test_dimension_only_patch_fails_the_complete_p400_contract(tmp_path):
     assert cases["unjustified_personalization_blocked"].expected_behavior_observed
     for case_id in (
         "P400-CROSS-SUBJECT",
-        "poisoned_personal_context_blocked",
-        "mixed_persistent_memory_filtered_item_by_item",
         "P400-REVOKED-GRANT",
         "P400-PURPOSE-MISMATCH",
         "P400-UNKNOWN-PROVENANCE",
         "wrong_policy_blocked",
     ):
         assert not cases[case_id].expected_behavior_observed
+    assert cases["poisoned_personal_context_blocked"].expected_behavior_observed
+    assert cases[
+        "mixed_persistent_memory_filtered_item_by_item"
+    ].expected_behavior_observed
     assert evidence.live_repair_status == "REJECTED"
 
 
@@ -302,7 +340,9 @@ async def test_trusted_gate_exception_retains_candidate_and_sanitized_substage(
     secret = "diagnostic-secret-that-must-not-survive"
     artifact_was_present = False
 
-    async def fail_poisoned_memory(workspace, *, contract):
+    async def fail_poisoned_memory(
+        workspace, *, contract, require_ingress_rejection=False,
+    ):
         nonlocal artifact_was_present
         artifact_was_present = any(tmp_path.glob("live-*.edits/*.json"))
         raise TrustedGateExecutionError(
@@ -325,7 +365,7 @@ async def test_trusted_gate_exception_retains_candidate_and_sanitized_substage(
 
     failure = evidence.validation_failure
     assert artifact_was_present
-    assert evidence.edit_candidate is not None
+    assert evidence.multi_edit_candidate is not None
     assert evidence.derived_patch is not None
     assert evidence.edit_artifact is not None
     assert (tmp_path / evidence.edit_artifact).is_file()
@@ -350,10 +390,16 @@ async def test_verify_only_reuses_retained_patch_and_production_verifier(
 
     original = live_repair_module.verify_all_p400_families
 
-    async def observed_verifier(workspace, *, contract):
+    async def observed_verifier(
+        workspace, *, contract, require_ingress_rejection=False,
+    ):
         nonlocal calls
         calls += 1
-        return await original(workspace, contract=contract)
+        return await original(
+            workspace,
+            contract=contract,
+            require_ingress_rejection=require_ingress_rejection,
+        )
 
     monkeypatch.setattr(live_repair_module, "verify_all_p400_families", observed_verifier)
     replay = await verify_retained_p400_live_repair(
@@ -394,7 +440,7 @@ async def test_verify_only_command_runs_without_provider_configuration(tmp_path)
     assert "Verdict: VERIFIED" in completed.stdout
 
 
-async def test_deterministic_known_good_proof_remains_separate_and_zero_provider(
+async def test_recorded_success_proof_remains_separate_and_zero_provider(
     monkeypatch,
 ):
     async def forbidden_complete(*args, **kwargs):
@@ -403,8 +449,9 @@ async def test_deterministic_known_good_proof_remains_separate_and_zero_provider
     monkeypatch.setattr(NebiusTokenFactoryClient, "complete", forbidden_complete)
     proof = await run_p400_verified_proof(ROOT)
 
-    assert proof.mode == "VERIFIED_PROOF"
+    assert proof.mode == "VERIFIED_REPLAY"
     assert proof.provider_requests == 0
+    assert proof.proof_provenance == "RECORDED_LIVE_PROOF"
     assert proof.verdict == "VERIFIED"
 
 
@@ -412,15 +459,15 @@ def test_live_repair_prompt_is_generic_and_contains_no_known_good_patch():
     request = build_live_p400_repair_request(
         live_attack=load_p400_live_attack(LIVE_ATTACK), repository_root=ROOT
     )
-    remediation = to_remediation_request(
+    remediation = to_multi_target_remediation_request(
         request, provider="nebius_token_factory", model=P400_LIVE_MODEL
     )
-    messages = build_edit_messages(remediation)
+    messages = build_multi_target_edit_messages(remediation)
     serialized = json.dumps(messages)
 
     assert "contract_violation" in serialized
     assert "PersonalizationAgent.respond" in serialized
-    assert request.source_context.source_hash in serialized
+    assert all(source.source_hash in serialized for source in request.source_contexts)
     assert "authorized_context_items" not in serialized
     assert "authorize_context_item" not in serialized
     assert "check cultural_language_preference" not in serialized.lower()
@@ -439,10 +486,10 @@ def test_live_repair_prompt_is_generic_and_contains_no_known_good_patch():
     ):
         assert requirement in serialized
     payload = json.loads(messages[1]["content"])
-    numbered = payload["source_context_line_numbered"]
-    assert numbered[0]["symbol_relative_line"] == 1
-    assert [item["source"] for item in numbered] == (
-        request.source_context.source_text.splitlines()
+    numbered = payload["source_contexts_line_numbered"]
+    assert numbered[0]["lines"][0]["symbol_relative_line"] == 1
+    assert [item["source"] for item in numbered[0]["lines"]] == (
+        request.source_contexts[0].source_text.splitlines()
     )
 
 
@@ -473,7 +520,7 @@ async def test_real_nebius_adapter_path_makes_one_structured_edit_call_only(tmp_
         model=P400_LIVE_MODEL,
     ), transport=httpx.MockTransport(handler))
     provider = NebiusNemotronRemediationProvider(client)
-    evidence, _ = await run_live_p400_repair(
+    evidence, path = await run_live_p400_repair(
         live_attack_path=LIVE_ATTACK,
         provider=provider,
         repository_root=ROOT,
@@ -486,7 +533,8 @@ async def test_real_nebius_adapter_path_makes_one_structured_edit_call_only(tmp_
     assert requests[0]["max_tokens"] == provider.max_edit_tokens
     assert requests[0]["response_format"]["type"] == "json_schema"
     assert requests[0]["response_format"]["json_schema"]["name"] == (
-        EDIT_SCHEMA_NAME
+        MULTI_EDIT_SCHEMA_NAME
     )
     assert evidence.candidate_validation == "FAIL"
     assert evidence.live_repair_status == "REJECTED"
+    assert "test-secret" not in path.read_text()
