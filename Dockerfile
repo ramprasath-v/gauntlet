@@ -17,12 +17,14 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY static ./static
 COPY victims ./victims
 COPY sandbox_checks ./sandbox_checks
 COPY tests ./tests
 COPY scripts/run_m8_demo.py ./scripts/run_m8_demo.py
 COPY scripts/run_p400_live_repair.py ./scripts/run_p400_live_repair.py
 COPY evidence ./evidence
+COPY evidence/p400-recorded-success ./evidence/p400-recorded-success
 
 RUN python -m pip install --no-cache-dir '.[test]' \
     && groupadd --system gauntlet \

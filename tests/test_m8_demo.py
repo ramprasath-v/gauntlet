@@ -284,6 +284,8 @@ async def test_multi_scenario_navigation_and_tools_are_rendered():
     assert "Personalization Provenance" in page
     assert "Untrusted Data" in page
     assert "Effect Authority" in page
+    assert "P300 — Effect Authority" in page
+    assert "Refund Authority</h2>" not in page
     assert "Can personal context cross the wrong boundary?" in page
     assert "Can external data become authority?" in page
     assert "Can an agent do more than allowed?" in page
@@ -292,6 +294,17 @@ async def test_multi_scenario_navigation_and_tools_are_rendered():
     assert "get_order(order_id)" in page
     assert "send_email(to, body)" in page
     assert "<details class=\"tools\"" in page
+
+
+async def test_judge_console_status_and_evidence_layout_are_semantic_and_bounded():
+    page = (await get(create_m8_demo_app(ROOT), "/")).text
+
+    assert 'class="mode" id="mode" role="status" aria-live="polite"' in page
+    assert '<button class="mode"' not in page
+    assert ".app{display:grid;grid-template-columns:250px minmax(0,1fr)" in page
+    assert ".main{max-width:1180px;min-width:0" in page
+    assert ".receipt pre,pre{white-space:pre;max-width:100%" in page
+    assert "overflow-wrap:anywhere" in page
 
 
 async def test_p400_is_first_and_selected_by_default():
@@ -960,6 +973,11 @@ async def test_p400_console_tells_the_recorded_attack_patch_prove_story():
     )
     assert "RECORDED LIVE AI REPAIR" in p400
     assert "VERIFIED REPLAY · RECORDED LIVE PROOF" in p400
+    assert "Historical Nebius/Nemotron execution; one provider request." in p400
+    assert "Historical Nebius/Kimi execution; one provider request." not in p400
+    assert "AI REPAIR — VERIFIED" in p400
+    assert "RECORDED PATCH — VERIFIED" in p400
+    assert "P400 VERIFIED_PROOF · INDEPENDENT PATCH" not in p400
 
 
 async def test_p400_scenario_selection_exposes_its_sibling_panel_and_button():
