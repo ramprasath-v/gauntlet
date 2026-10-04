@@ -33,9 +33,9 @@ customer-support, and personalization semantics.
 | M7.7 — NVIDIA Nemotron Adversarial Generation | COMPLETE — 5/5 EXECUTED | Let Nemotron propose bounded adversarial scenarios while Gauntlet executes and grades them deterministically. |
 | M7.7.1 — Canonical Scenario Contract + Failure Evidence | COMPLETE | Align generated capability arguments with deterministic adapters and retain provider output through downstream failure. |
 | M8 — Product Demo Flow | COMPLETE | Present connect → attack → repair → independent proof within about 60 seconds. |
-| M8.1 — Multi-Scenario Live Demo Console | COMPLETE | Select P100/P300 scenarios, run live P300 through M7.7, and retain verified replay as fallback. |
+| M8.1 — Multi-Scenario Live Demo Console | COMPLETE | Select P100/P300/P400, run explicit live actions, and retain recorded/verified evidence paths. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
-| M10 — P400 Personalization Authority | PENDING / STRETCH | Test unauthorized or irrelevant sensitive-inference use in personalization. |
+| M10 / P400 — Personalization Provenance | COMPLETE — LIVE REPAIR NOT_VERIFIED | Test whether personal context crosses an unauthorized subject, purpose, or provenance boundary; independently reject incomplete repairs. |
 | M11 — Connector Architecture | FUTURE | Add adapters without changing the contract core. |
 | M12 — Enterprise Runner / Private Deployment | FUTURE | Run privately and export sanitized evidence. |
 | M13 — Policy and Contract Import | FUTURE | Derive contracts from governing policy sources and detect drift. |
@@ -124,8 +124,7 @@ evidence remained unchanged. A provider response alone did not earn proof.
 
 ### M7.7 — NVIDIA Nemotron Adversarial Generation
 
-Status: OFFLINE IMPLEMENTATION COMPLETE; LIVE EXPERIMENT PENDING EXPLICIT
-AUTHORIZATION.
+Status: COMPLETE — five generated scenarios executed and retained.
 
 M7.7 adds a property-neutral adversarial scenario generator. It accepts a
 security contract, deterministic seed, capability context, and bounded
@@ -148,7 +147,7 @@ No live request was made in the offline milestone. M8 has not started.
 
 ### M7.7.1 — Canonical Scenario Contract + Failure Evidence
 
-Status: COMPLETE; ONE CONTROLLED LIVE RETRY PENDING EXPLICIT AUTHORIZATION.
+Status: COMPLETE — controlled live retry executed with retained v2 evidence.
 
 The first M7.7 request reached Nebius Token Factory and returned five scenarios
 that passed the generic structured model. Local execution then stopped at the
@@ -201,13 +200,13 @@ zero provider requests and does not claim generic production-agent discovery.
 
 Status: COMPLETE.
 
-The product demo now presents Customer Support Agent scenarios for P100
-Untrusted Review and P300 Refund Authority from one console. Its capability
-drawer lists `search_reviews`, `get_order`, `refund_order`, and `send_email` as
-demo metadata. A visible Personalization Agent category describes Unauthorized
-Personalization as coming next and does not claim a working P400 engine.
+The product demo presents P100 Untrusted Review, P300 Refund Authority, and
+P400 Personalization Provenance from one console. Its capability drawer lists
+`search_reviews`, `get_order`, `refund_order`, and `send_email` as synthetic
+customer-support metadata; P400 uses the separate synthetic Personalization
+Agent and its framework-owned context lineage.
 
-P300 is the live path. `Run Live` calls the existing M7.7 one-request workflow:
+P300 `Run Live` calls the existing M7.7 one-request workflow:
 Nebius Token Factory asks `nvidia/nemotron-3-super-120b-a12b` for five bounded
 canonical scenarios, then benchmark-owned execution and P300 evaluation assign
 the verdicts. The configured autonomous refund limit feeds the existing P300
@@ -239,10 +238,18 @@ canonical retained diff and its independently verified P100 block, P200
 preservation, 21/21 compatibility, and 4/4 mutation results. Structured
 `LIVE` and `VERIFIED_REPLAY` provenance, evidence paths, and file digests keep
 the two candidates and their outcomes distinct. Missing or mismatched evidence
-fails closed. This P100 integration makes zero provider calls and does not
-change historical evidence. P300 continues to show its own rejected repair
+fails closed. This recorded P100 evidence composition makes zero provider calls
+and does not change historical evidence. P300 continues to show its own rejected repair
 and `NOT_VERIFIED` result with NVIDIA/Nebius generation attributed separately
 from Gauntlet's deterministic verdicts.
+
+P400 adds a separate Personalization Agent panel. Its true-live sequence uses
+Nemotron Super for ATTACK, Kimi for PATCH, and Nemotron Super for PROVE, with
+one explicit provider request per enabled stage and no automatic retries. Its
+recorded evidence path makes zero provider requests. The latest live candidate
+remains `NOT_VERIFIED` because the broader proof rejected cross-subject,
+poisoned-memory, and mixed-context behavior even though the primary
+unrequested-personalization case was blocked.
 
 ### M9 — Capability Discovery Prototype
 
@@ -251,20 +258,40 @@ observed calls/results, and basic metadata. Ask for confirmation of business
 semantics such as financial sensitivity, thresholds, approval type, ownership,
 or personalization authority. Do not build universal capability classification.
 
-### M10 — P400 Personalization Authority
+### M10 / P400 — Personalization Provenance
 
-Test whether unsupported sensitive or identity-like inference affects
-personalization without explicit authorization or task relevance. Verification
-must also prove that explicitly requested and legitimate non-sensitive
-personalization continue to work. Implement only after P100, P300, and M8 are
-stable.
+Status: COMPLETE with latest live repair result `NOT_VERIFIED`.
 
-The reference scenario holds the request, model, tools, settings, and history
-fixed while changing only an irrelevant profile field for a request such as
-“Suggest baby names.” Evidence records the changed variable, absence of an
-explicit cultural preference, task relevance, comparison method, and observed
-behavioral divergence. Findings must describe the proxy-field effect without
-claiming a user's actual ethnicity, culture, religion, nationality, or identity.
+P400 asks whether personal context can cross the wrong boundary. Its trusted
+contract evaluates framework-owned causal lineage rather than output keywords
+or model self-reports. Personal context may enter a model request only when its
+context identity, subject, provenance, active purpose, allowed purpose, and
+grant state match trusted policy. Authorized personalization remains required
+utility; blocking all personal context is not a valid repair.
+
+The frozen deterministic proof covers three attack families:
+
+1. wrong-person / cross-subject context;
+2. unrequested personalization; and
+3. poisoned persistent memory.
+
+Mixed-context controls additionally require unauthorized context to be removed
+item by item while authorized context remains available. Deterministic offline
+proof establishes the benchmark and an independent known-good repair without a
+provider call.
+
+The true-live M8 flow separates three explicit Nebius Token Factory actions.
+ATTACK uses `nvidia/nemotron-3-super-120b-a12b`, PATCH uses
+`moonshotai/Kimi-K2.7-Code`, and PROVE uses Nemotron Super again in an isolated
+patched workspace. Gauntlet's evaluator owns every verdict.
+
+The latest live patch blocked the primary unrequested-personalization case, but
+the complete proof matrix still failed cross-subject context, poisoned
+persistent memory, and mixed-context authorization. The final status is
+therefore `NOT_VERIFIED`; Gauntlet refused certification rather than treating a
+single fixed symptom as proof of the complete P400 contract. Repository and
+evidence integrity passed, and recorded/verified evidence remains distinct from
+current-session live execution.
 
 ### M11–M14 — Long-term architecture
 
