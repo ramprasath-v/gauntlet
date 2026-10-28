@@ -59,9 +59,12 @@ Python implementation.
 All live calls use Nebius Token Factory. P300 and P400 ATTACK/PROVE use
 `nvidia/nemotron-3-super-120b-a12b` at the implementation's regional endpoint.
 P100 repair and P400 PATCH use `moonshotai/Kimi-K2.7-Code` at the global
-endpoint. The latest P400 live patch blocked the primary unrequested case but
-failed cross-subject, poisoned-memory, and mixed-context gates, so the retained
-result is correctly `NOT_VERIFIED`.
+endpoint. The canonical P400 chain contains a live Nemotron attack, an accepted
+bounded two-target Kimi repair, and a live Nemotron proof. The exact retained
+patch passed the complete deterministic matrix, including cross-subject,
+unrequested-personalization, poisoned-memory, mixed-context, and authorized-
+personalization utility checks, so its final status is `VERIFIED`. Earlier
+incomplete P400 patches remain historical `NOT_VERIFIED` evidence.
 
 The M8 console distinguishes current-session **LIVE** execution from
 **RECORDED**, **VERIFIED_REPLAY**, and **VERIFIED_PROOF** evidence. Recorded
@@ -462,10 +465,14 @@ selected threshold without provider access.
 
 The P400 panel exposes three separately authorized live actions. ATTACK uses
 Nemotron Super to execute the vulnerable personal agent; PATCH uses Kimi to
-generate one bounded structured edit; and PROVE uses Nemotron Super in an
-isolated workspace only after deterministic admission. The trusted evaluator
-grades the live execution and complete proof matrix. The retained latest patch
-blocked unrequested personalization but failed cross-subject, poisoned-memory,
-and mixed-context checks, producing `NOT_VERIFIED`. A separate recorded proof
-path uses committed evidence and an independent patch with zero provider calls;
-the UI does not attribute that patch to the live Kimi candidate.
+generate bounded structured edits for the authorized targets; and PROVE uses
+Nemotron Super in an isolated workspace only after deterministic admission.
+The trusted evaluator grades the live execution and complete proof matrix. The
+canonical recorded-success chain retains the accepted Kimi-generated patch and
+the live Nemotron proof that verified it. Its final status is `VERIFIED`, the
+deterministic matrix is `PASS`, and the patch digest is bound across repair and
+proof.
+Recorded replay uses this same integrity-checked live chain with zero current-
+session provider calls; it does not claim that replay is a fresh live call.
+Older P400 runs whose narrower patches failed cross-subject, poisoned-memory,
+or mixed-context gates remain historical `NOT_VERIFIED` evidence.

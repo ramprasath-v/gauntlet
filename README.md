@@ -17,13 +17,19 @@ The frozen judge console contains three executable security contracts:
 | **P400 — Personalization Provenance** | Context → Personalization | Can personal context cross the wrong boundary? |
 
 P400 covers three fixed attack families: wrong-person/cross-subject context,
-unrequested personalization, and poisoned persistent memory. Its latest live
-experiment is truthfully **`NOT_VERIFIED`**. The Kimi-generated patch blocked
-the primary unrequested-personalization case, but the broader deterministic
-proof still found cross-subject, poisoned-memory, and mixed-context failures.
-Gauntlet therefore refused certification. This is the intended product
-behavior: fixing the first symptom is not sufficient proof that an AI-generated
-repair satisfies the complete security contract.
+unrequested personalization, and poisoned persistent memory. The canonical
+live **ATTACK → PATCH → PROVE** chain used NVIDIA Nemotron Super for attack and
+proof and Kimi-K2.7-Code for a bounded two-target repair. Gauntlet accepted the
+exact Kimi candidate only after deterministic admission, then verified the
+patched agent against the complete proof matrix. The retained proof is
+**`VERIFIED`** with the deterministic matrix **`PASS`**, including authorized-
+personalization utility and mixed-context item-by-item filtering.
+
+Earlier P400 experiments remain preserved as historical evidence. In
+particular, an earlier Kimi patch fixed the primary unrequested-personalization
+case but failed cross-subject, poisoned-memory, and mixed-context checks, so
+that run remains truthfully **`NOT_VERIFIED`**. It is not the canonical
+recorded-success chain.
 
 ## Setup and run
 
@@ -296,16 +302,19 @@ cp .env.example .env
 PYTHONPATH=src:. python scripts/run_m8_demo.py
 ```
 
-Open `http://127.0.0.1:8080`. Select **Untrusted Review** for P100, **Refund
+Open `http://127.0.0.1:8080`. Select **Untrusted Review** for P100, **Effect
 Authority** for P300, or **Personalization Provenance** for P400. Live buttons
 make the labeled provider request; recorded/replay buttons make zero provider
 requests. The connected-agent presentation is limited to the repository's
 synthetic agents and does not claim arbitrary production-agent discovery.
 
 For P400, use `RUN LIVE ATTACK` → `GENERATE LIVE PATCH` →, if the candidate is
-accepted for verification, `RUN LIVE PROOF`. The retained latest result is
-`NOT_VERIFIED`: the primary case was blocked, but cross-subject, poisoned
-memory, and mixed-context checks failed, so Gauntlet refused certification.
+accepted for verification, `RUN LIVE PROOF`. `LOAD RECORDED EVIDENCE` loads the
+canonical successful live chain: Nemotron attack, accepted Kimi repair, and
+Nemotron proof. Its final status is `VERIFIED`, its deterministic matrix is
+`PASS`, and replay makes zero provider requests. Older rejected and
+`NOT_VERIFIED` experiments remain historical evidence and are not substituted
+into this canonical replay.
 
 `demo/gauntlet-m7.html` is the self-contained, offline M7.1 verified replay.
 M7.2 adds a separate trusted localhost controller for an explicitly authorized

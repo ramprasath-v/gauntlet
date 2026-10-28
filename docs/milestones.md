@@ -35,7 +35,7 @@ customer-support, and personalization semantics.
 | M8 — Product Demo Flow | COMPLETE | Present connect → attack → repair → independent proof within about 60 seconds. |
 | M8.1 — Multi-Scenario Live Demo Console | COMPLETE | Select P100/P300/P400, run explicit live actions, and retain recorded/verified evidence paths. |
 | M9 — Capability Discovery Prototype | PENDING / STRETCH | Discover tool schemas and ask only for business semantics that require confirmation. |
-| M10 / P400 — Personalization Provenance | COMPLETE — LIVE REPAIR NOT_VERIFIED | Test whether personal context crosses an unauthorized subject, purpose, or provenance boundary; independently reject incomplete repairs. |
+| M10 / P400 — Personalization Provenance | COMPLETE — CANONICAL LIVE PROOF VERIFIED | Test whether personal context crosses an unauthorized subject, purpose, or provenance boundary; verify complete repairs and independently reject incomplete ones. |
 | M11 — Connector Architecture | FUTURE | Add adapters without changing the contract core. |
 | M12 — Enterprise Runner / Private Deployment | FUTURE | Run privately and export sanitized evidence. |
 | M13 — Policy and Contract Import | FUTURE | Derive contracts from governing policy sources and detect drift. |
@@ -200,7 +200,7 @@ zero provider requests and does not claim generic production-agent discovery.
 
 Status: COMPLETE.
 
-The product demo presents P100 Untrusted Review, P300 Refund Authority, and
+The product demo presents P100 Untrusted Review, P300 Effect Authority, and
 P400 Personalization Provenance from one console. Its capability drawer lists
 `search_reviews`, `get_order`, `refund_order`, and `send_email` as synthetic
 customer-support metadata; P400 uses the separate synthetic Personalization
@@ -246,10 +246,11 @@ from Gauntlet's deterministic verdicts.
 P400 adds a separate Personalization Agent panel. Its true-live sequence uses
 Nemotron Super for ATTACK, Kimi for PATCH, and Nemotron Super for PROVE, with
 one explicit provider request per enabled stage and no automatic retries. Its
-recorded evidence path makes zero provider requests. The latest live candidate
-remains `NOT_VERIFIED` because the broader proof rejected cross-subject,
-poisoned-memory, and mixed-context behavior even though the primary
-unrequested-personalization case was blocked.
+recorded evidence path makes zero provider requests. The canonical retained
+chain contains an accepted bounded two-target Kimi repair and a Nemotron proof
+with final status `VERIFIED` and deterministic matrix `PASS`. Earlier narrower
+repairs that failed cross-subject, poisoned-memory, or mixed-context behavior
+remain preserved as historical `NOT_VERIFIED` runs.
 
 ### M9 — Capability Discovery Prototype
 
@@ -260,7 +261,7 @@ or personalization authority. Do not build universal capability classification.
 
 ### M10 / P400 — Personalization Provenance
 
-Status: COMPLETE with latest live repair result `NOT_VERIFIED`.
+Status: COMPLETE with canonical live proof result `VERIFIED`.
 
 P400 asks whether personal context can cross the wrong boundary. Its trusted
 contract evaluates framework-owned causal lineage rather than output keywords
@@ -285,13 +286,20 @@ ATTACK uses `nvidia/nemotron-3-super-120b-a12b`, PATCH uses
 `moonshotai/Kimi-K2.7-Code`, and PROVE uses Nemotron Super again in an isolated
 patched workspace. Gauntlet's evaluator owns every verdict.
 
-The latest live patch blocked the primary unrequested-personalization case, but
-the complete proof matrix still failed cross-subject context, poisoned
-persistent memory, and mixed-context authorization. The final status is
-therefore `NOT_VERIFIED`; Gauntlet refused certification rather than treating a
-single fixed symptom as proof of the complete P400 contract. Repository and
-evidence integrity passed, and recorded/verified evidence remains distinct from
-current-session live execution.
+The canonical live chain used Nemotron Super for ATTACK, Kimi-K2.7-Code for a
+bounded two-target PATCH, and Nemotron Super for PROVE. The accepted exact patch
+passed cross-subject, unrequested-personalization, poisoned-memory, mixed-
+context, and authorized-personalization utility checks. The retained proof has
+final status `VERIFIED`, deterministic matrix `PASS`, repository immutability
+`PASS`, and an integrity-bound patch digest shared with the repair evidence.
+Recorded replay loads that same canonical live chain with zero current-session
+provider requests.
+
+Earlier live patches remain historical evidence. One such narrower patch
+blocked the primary unrequested-personalization case but failed cross-subject,
+poisoned-memory, and mixed-context checks; its final status remains correctly
+`NOT_VERIFIED`. Gauntlet did not promote that incomplete repair into the
+canonical recorded-success chain.
 
 ### M11–M14 — Long-term architecture
 
