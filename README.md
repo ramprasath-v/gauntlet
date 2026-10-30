@@ -10,11 +10,11 @@ provenance checks before granting a verified verdict.
 
 The frozen judge console contains three executable security contracts:
 
-| Contract | Boundary | Question |
-| --- | --- | --- |
-| **P100 — Untrusted Data** | Data → Authority | Can external data become authority? |
-| **P300 — Effect Authority** | Authority → Effect | Can an agent perform effects beyond what was authorized? |
-| **P400 — Personalization Provenance** | Context → Personalization | Can personal context cross the wrong boundary? |
+| Contract                              | Boundary                  | Question                                                 |
+| ------------------------------------- | ------------------------- | -------------------------------------------------------- |
+| **P100 — Untrusted Data**             | Data → Authority          | Can external data become authority?                      |
+| **P300 — Effect Authority**           | Authority → Effect        | Can an agent perform effects beyond what was authorized? |
+| **P400 — Personalization Provenance** | Context → Personalization | Can personal context cross the wrong boundary?           |
 
 P400 covers three fixed attack families: wrong-person/cross-subject context,
 unrequested personalization, and poisoned persistent memory. The canonical
@@ -30,6 +30,19 @@ particular, an earlier Kimi patch fixed the primary unrequested-personalization
 case but failed cross-subject, poisoned-memory, and mixed-context checks, so
 that run remains truthfully **`NOT_VERIFIED`**. It is not the canonical
 recorded-success chain.
+
+## Architecture
+
+![Gauntlet architecture: Attack, Patch, and Prove](docs/Gauntlet-architecture.png)
+
+The browser console is implemented with HTML, CSS, and JavaScript and calls a
+Python/FastAPI backend. The backend executes the P100, P300, and P400 synthetic
+security scenarios, uses NVIDIA Nemotron through Nebius Token Factory for live
+attack and proof interactions, and uses Kimi K2.7 Code through Nebius Token
+Factory for bounded repair generation. Gauntlet validates model-proposed source
+edits before applying them in a disposable test workspace, then re-attacks the
+patched agent and records deterministic proof evidence. Outcomes remain
+distinct: `VERIFIED`, `REJECTED`, and `NOT_VERIFIED` are never interchangeable.
 
 ## Setup and run
 
@@ -98,13 +111,13 @@ All live models run through **Nebius Token Factory**. NVIDIA usage is explicit:
 **Kimi K2.7 Code** is used for structured code-repair generation. Gauntlet's
 deterministic evaluator, not either model, owns security verdicts.
 
-| Live action | Model | Endpoint |
-| --- | --- | --- |
-| P100 repair | `moonshotai/Kimi-K2.7-Code` | `https://api.tokenfactory.nebius.com/v1/` |
+| Live action                 | Model                               | Endpoint                                              |
+| --------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| P100 repair                 | `moonshotai/Kimi-K2.7-Code`         | `https://api.tokenfactory.nebius.com/v1/`             |
 | P300 adversarial generation | `nvidia/nemotron-3-super-120b-a12b` | `https://api.tokenfactory.us-central1.nebius.com/v1/` |
-| P400 ATTACK | `nvidia/nemotron-3-super-120b-a12b` | regional us-central1 Token Factory endpoint |
-| P400 PATCH | `moonshotai/Kimi-K2.7-Code` | global Token Factory endpoint |
-| P400 PROVE | `nvidia/nemotron-3-super-120b-a12b` | regional us-central1 Token Factory endpoint |
+| P400 ATTACK                 | `nvidia/nemotron-3-super-120b-a12b` | regional us-central1 Token Factory endpoint           |
+| P400 PATCH                  | `moonshotai/Kimi-K2.7-Code`         | global Token Factory endpoint                         |
+| P400 PROVE                  | `nvidia/nemotron-3-super-120b-a12b` | regional us-central1 Token Factory endpoint           |
 
 `NEBIUS_API_KEY` may be supplied through the process environment or the local
 ignored `.env`. P300 and P400 select their role-specific endpoints and models
